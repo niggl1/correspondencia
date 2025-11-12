@@ -122,8 +122,8 @@ export default function CorrespondenciasPage() {
   /** filtro de datas */
   const filtrados = dados.filter((d) => {
     let dataRef: Timestamp | null = null;
-    if (tipoFiltro === "criado") dataRef = d.criadoEm;
-    else if (tipoFiltro === "retirado") dataRef = d.retiradoEm;
+   if (tipoFiltro === "criado") dataRef = d.criadoEm ?? null;
+    else if (tipoFiltro === "retirado") dataRef = d.retiradoEm ?? null;
 
     if (!dataRef) return true;
 
@@ -175,9 +175,9 @@ export default function CorrespondenciasPage() {
         condominioId: linha.condominioId,
         protocolo: linha.protocolo,
         condominioNome,
-        blocoNome: linha.blocoNome,
-        moradorNome: linha.moradorNome,
-        apartamento: linha.apartamento,
+        blocoNome: linha.blocoNome ?? '',
+        moradorNome: linha.moradorNome ?? '',
+        apartamento: linha.apartamento ?? '',
       },
       {
         moradorDataUrl: moradorAssDataUrl,
