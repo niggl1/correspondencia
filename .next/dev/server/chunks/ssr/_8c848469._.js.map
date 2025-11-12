@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 4, "column": 0}, "map": {"version":3,"sources":["file:///C:/Projetos/codigo-melhorado-opcao2-com-demo/app/layout.tsx"],"sourcesContent":["import \"./globals.css\";\nimport type { Metadata } from \"next\";\n\nexport const metadata: Metadata = {\n  title: \"Código Melhorado\",\n  description: \"Admin de Porteiros - Demo/Real\",\n};\n\nexport default function RootLayout({ children }: { children: React.ReactNode }) {\n  return (\n    <html lang=\"pt-BR\">\n      <body className=\"min-h-screen antialiased\">\n        <div className=\"container-app\">\n          {children}\n        </div>\n      </body>\n    </html>\n  );\n}\n"],"names":[],"mappings":";;;;;;;;;AAGO,MAAM,WAAqB;IAChC,OAAO;IACP,aAAa;AACf;AAEe,SAAS,WAAW,EAAE,QAAQ,EAAiC;IAC5E,qBACE,8OAAC;QAAK,MAAK;kBACT,cAAA,8OAAC;YAAK,WAAU;sBACd,cAAA,8OAAC;gBAAI,WAAU;0BACZ;;;;;;;;;;;;;;;;AAKX","debugId":null}},
+    {"offset": {"line": 45, "column": 0}, "map": {"version":3,"sources":["file:///C:/Projetos/codigo-melhorado-opcao2-com-demo/node_modules/next/src/server/route-modules/app-page/vendored/rsc/react-jsx-dev-runtime.ts"],"sourcesContent":["module.exports = (\n  require('../../module.compiled') as typeof import('../../module.compiled')\n).vendored['react-rsc']!.ReactJsxDevRuntime\n"],"names":["module","exports","require","vendored","ReactJsxDevRuntime"],"mappings":"AAAAA,OAAOC,OAAO,GACZC,QAAQ,4HACRC,QAAQ,CAAC,YAAY,CAAEC,kBAAkB","ignoreList":[0],"debugId":null}}]
+}
