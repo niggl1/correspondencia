@@ -118,7 +118,6 @@ export async function gerarReciboPDF({
   if (onProgress) onProgress(95);
 
   // --- CRIAÇÃO DO PDF (Síncrona - jsPDF) ---
-  // compress: true ajuda a manter o arquivo final pequeno
   const doc = new jsPDF({ compress: true });
   
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -164,20 +163,28 @@ export async function gerarReciboPDF({
   doc.setTextColor(0, 0, 0);
   doc.setFontSize(9);
 
+  // --- LÓGICA DE TRATAMENTO DE DADOS (CORREÇÃO) ---
+  const dataEntrada = correspondencia.dataChegada || correspondencia.criadoEm || new Date();
+  const remetenteFinal = correspondencia.remetente || correspondencia.entregador || "Portaria / Administração";
+  const destinatarioFinal = correspondencia.moradorNome || correspondencia.destinatario || "Morador";
+  const blocoFinal = correspondencia.blocoNome || correspondencia.bloco || "";
+  const aptoFinal = correspondencia.apartamento || correspondencia.unidade || "";
+
   const infoCorrespondencia = [
     ["Protocolo:", correspondencia.protocolo || "N/A"],
-    ["Tipo:", correspondencia.tipo || "N/A"],
-    ["Remetente:", correspondencia.remetente || "N/A"],
-    ["Destinatário:", correspondencia.destinatario || "N/A"],
-    ["Bloco/Apto:", `${correspondencia.bloco || ""} - ${correspondencia.apartamento || ""}`],
-    ["Data de Chegada:", correspondencia.dataChegada ? new Date(correspondencia.dataChegada).toLocaleDateString("pt-BR") : "N/A"],
+    // Removemos a linha "Tipo" se for N/A ou vazia
+    ...(correspondencia.tipo && correspondencia.tipo !== "N/A" ? [["Tipo:", correspondencia.tipo]] : []),
+    ["Remetente:", remetenteFinal],
+    ["Destinatário:", destinatarioFinal],
+    ["Bloco/Apto:", `${blocoFinal} - ${aptoFinal}`],
+    ["Data de Entrada:", new Date(dataEntrada).toLocaleDateString("pt-BR")],
   ];
 
   infoCorrespondencia.forEach(([label, value]) => {
     doc.setFont("helvetica", "bold");
     doc.text(label, margin + 3, yPosition);
     doc.setFont("helvetica", "normal");
-    doc.text(value, margin + 40, yPosition);
+    doc.text(String(value), margin + 40, yPosition);
     yPosition += lineHeight;
   });
 
@@ -212,7 +219,7 @@ export async function gerarReciboPDF({
     doc.setFont("helvetica", "bold");
     doc.text(label, margin + 3, yPosition);
     doc.setFont("helvetica", "normal");
-    const lines = doc.splitTextToSize(value, 130);
+    const lines = doc.splitTextToSize(String(value), 130);
     doc.text(lines, margin + 40, yPosition);
     yPosition += lineHeight * lines.length;
   });
