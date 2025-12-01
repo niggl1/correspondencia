@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useAvisosRapidos } from "@/hooks/useAvisosRapidos";
 import { db, storage } from "@/app/lib/firebase";
-import { collection, query, where, getDocs } from "firebase/firestore";
+// 👇 Adicionei 'doc' e 'updateDoc' aqui
+import { collection, query, where, getDocs, doc, updateDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import Navbar from "@/components/Navbar";
 import BotaoVoltar from "@/components/BotaoVoltar"; 
@@ -100,11 +101,9 @@ function AvisosRapidosPage() {
   const [enviando, setEnviando] = useState(false);
   const [protocoloGerado, setProtocoloGerado] = useState("");
 
-  // ✅ CORREÇÃO 1: Usa a variável de ambiente OU o domínio oficial hardcoded como fallback
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://appcorrespondencia.com.br";
   const LINK_SISTEMA = `${baseUrl}/login`;
   
-  // --- MENSAGEM PADRÃO ---
   const MSG_PADRAO = `*AVISO DE CORRESPONDÊNCIA*
 
 Olá, *{{NOME}}*!
@@ -266,7 +265,7 @@ Aguardamos a sua retirada`;
          arquivoFinal = await compressImage(imagemAviso);
       }
 
-      // 1. Registrar no banco
+      // 1. Registrar no banco (inicialmente sem foto)
       const avisoId = await registrarAviso({
         enviadoPorId: user?.uid || "",
         enviadoPorNome: user?.nome || "Porteiro",
@@ -283,14 +282,20 @@ Aguardamos a sua retirada`;
         fotoUrl: "", 
       });
 
-      // 2. Upload da foto
+      // 2. Upload da foto e ATUALIZAÇÃO DO DOCUMENTO
       if (arquivoFinal && avisoId) {
          const storageRef = ref(storage, `avisos/${avisoId}_${Date.now()}.jpg`);
          await uploadBytes(storageRef, arquivoFinal);
          publicFotoUrl = await getDownloadURL(storageRef);
+
+         // ✅ A CORREÇÃO ESTÁ AQUI:
+         // Agora salvamos o link da foto dentro do documento do aviso
+         await updateDoc(doc(db, "avisos_rapidos", avisoId), {
+             fotoUrl: publicFotoUrl
+         });
       }
 
-      // ✅ CORREÇÃO 2: Formato do Link compatível com App (?id=)
+      // 3. Gerar Link
       const linkParaMensagem = `${baseUrl}/ver?id=${avisoId}`;
 
       let mensagemFinal = mensagemTemplate
@@ -301,7 +306,6 @@ Aguardamos a sua retirada`;
 
       mensagemFinal = mensagemFinal.replace("{{FOTO}}", linkParaMensagem);
 
-      // ✅ CORREÇÃO 3: Usa api.whatsapp.com para evitar problemas de redirecionamento no PC
       const whatsappLink = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(mensagemFinal)}`;
       window.open(whatsappLink, "_blank");
 
