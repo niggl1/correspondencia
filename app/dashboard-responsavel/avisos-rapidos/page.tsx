@@ -100,12 +100,11 @@ function AvisosRapidosPage() {
   const [enviando, setEnviando] = useState(false);
   const [protocoloGerado, setProtocoloGerado] = useState("");
 
-  // ✅ PEGAR URL BASE DO SITE AUTOMATICAMENTE
-  const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+  // ✅ CORREÇÃO 1: Usa a variável de ambiente OU o domínio oficial hardcoded como fallback
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://appcorrespondencia.com.br";
   const LINK_SISTEMA = `${baseUrl}/login`;
   
-  // --- MENSAGEM PADRÃO AJUSTADA (V3) ---
-  // Removido "E QR CODE" conforme solicitado
+  // --- MENSAGEM PADRÃO ---
   const MSG_PADRAO = `*AVISO DE CORRESPONDÊNCIA*
 
 Olá, *{{NOME}}*!
@@ -121,12 +120,10 @@ Você recebeu uma correspondência
 {{FOTO}}
 
 Aguardamos a sua retirada`;
-  // -------------------------------------------------
   
   const [mensagemTemplate, setMensagemTemplate] = useState<string>(MSG_PADRAO);
   const [mostrarConfigMsg, setMostrarConfigMsg] = useState(false);
 
-  // CHAVE ATUALIZADA PARA V3 PARA FORÇAR A TROCA NO SEU NAVEGADOR
   const STORAGE_KEY = "aviso_msg_template_v3";
 
   const getBackUrl = () => {
@@ -293,8 +290,8 @@ Aguardamos a sua retirada`;
          publicFotoUrl = await getDownloadURL(storageRef);
       }
 
-      // 3. Gerar Link
-      const linkParaMensagem = `${baseUrl}/ver/${avisoId}`;
+      // ✅ CORREÇÃO 2: Formato do Link compatível com App (?id=)
+      const linkParaMensagem = `${baseUrl}/ver?id=${avisoId}`;
 
       let mensagemFinal = mensagemTemplate
         .replace("{{NOME}}", moradorParaEnvio.nome)
@@ -302,10 +299,10 @@ Aguardamos a sua retirada`;
         .replace("{{PROTOCOLO}}", protocoloGerado)
         .replace("{{LINK}}", LINK_SISTEMA);
 
-      // Substitui {{FOTO}} pelo link limpo
       mensagemFinal = mensagemFinal.replace("{{FOTO}}", linkParaMensagem);
 
-      const whatsappLink = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(mensagemFinal)}`;
+      // ✅ CORREÇÃO 3: Usa api.whatsapp.com para evitar problemas de redirecionamento no PC
+      const whatsappLink = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(mensagemFinal)}`;
       window.open(whatsappLink, "_blank");
 
       setSucesso(`Aviso enviado para ${moradorParaEnvio.nome}!`);
@@ -534,7 +531,3 @@ Aguardamos a sua retirada`;
 }
 
 export default withAuth(AvisosRapidosPage, ["porteiro", "responsavel"]);
-
-
-
-
