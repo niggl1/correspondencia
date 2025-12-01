@@ -1,0 +1,51 @@
+{
+  "name": "codigo-melhorado",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "build:app": "set BUILD_TARGET=app&& next build",
+    "typecheck": "tsc --noEmit",
+    "verify": "node scripts/verify-project.mjs"
+  },
+  "dependencies": {
+    "@capacitor-mlkit/barcode-scanning": "^7.4.0",
+    "@capacitor/android": "^7.4.4",
+    "@capacitor/browser": "^7.0.2",
+    "@capacitor/camera": "^7.0.2",
+    "@capacitor/cli": "^7.4.4",
+    "@capacitor/core": "^7.4.4",
+    "@ionic/pwa-elements": "^3.3.0",
+    "@yudiel/react-qr-scanner": "^2.4.1",
+    "browser-image-compression": "^2.0.2",
+    "firebase": "10.13.2",
+    "html5-qrcode": "^2.3.8",
+    "jspdf": "^3.0.4",
+    "jspdf-autotable": "^5.0.2",
+    "lucide-react": "^0.454.0",
+    "next": "14.2.5",
+    "qrcode": "^1.5.4",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-signature-canvas": "^1.1.0-alpha.2",
+    "resend": "^6.4.2",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/node": "20.11.25",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "18.2.48",
+    "@types/react-dom": "18.2.18",
+    "autoprefixer": "10.4.20",
+    "dotenv": "^17.2.3",
+    "eslint": "8.57.0",
+    "eslint-config-next": "14.2.5",
+    "postcss": "8.4.47",
+    "tailwindcss": "3.4.14",
+    "tsx": "^4.20.6",
+    "typescript": "5.6.3"
+  }
+}

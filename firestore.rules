@@ -1,0 +1,109 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Função auxiliar para verificar se o usuário está autenticado
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Função auxiliar para obter dados do usuário
+    function getUserData() {
+      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data;
+    }
+    
+    // Função auxiliar para verificar role
+    function hasRole(role) {
+      return isAuthenticated() && getUserData().role == role;
+    }
+    
+    // Função auxiliar para verificar múltiplos roles
+    function hasAnyRole(roles) {
+      return isAuthenticated() && getUserData().role in roles;
+    }
+    
+    // Função auxiliar para verificar se pertence ao mesmo condomínio
+    function isSameCondominio(condominioId) {
+      return isAuthenticated() && getUserData().condominioId == condominioId;
+    }
+    
+    // ✅ COLEÇÃO: usuarios
+    match /usuarios/{userId} {
+      // Usuário pode ler e editar apenas seus próprios dados
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isAuthenticated() && request.auth.uid == userId;
+      
+      // Apenas admins podem criar e deletar usuários
+      allow create, delete: if hasAnyRole(['admin', 'adminMaster']);
+    }
+    
+    // ✅ COLEÇÃO: condominios
+    match /condominios/{condominioId} {
+      // AdminMaster pode fazer tudo
+      allow read, write: if hasRole('adminMaster');
+      
+      // Responsavel e admin podem ler do seu condomínio
+      allow read: if isAuthenticated() && isSameCondominio(condominioId);
+      
+      // Apenas admin pode criar/editar condomínios
+      allow create, update: if hasAnyRole(['admin', 'adminMaster']);
+    }
+    
+    // ✅ COLEÇÃO: blocos
+    match /blocos/{blocoId} {
+      // Qualquer usuário autenticado do mesmo condomínio pode ler
+      allow read: if isAuthenticated() && isSameCondominio(resource.data.condominioId);
+      
+      // Apenas responsavel, admin e adminMaster podem criar/editar/deletar
+      allow create, update, delete: if hasAnyRole(['responsavel', 'admin', 'adminMaster']);
+    }
+    
+    // ✅ COLEÇÃO: unidades
+    match /unidades/{unidadeId} {
+      // Qualquer usuário autenticado do mesmo condomínio pode ler
+      allow read: if isAuthenticated() && isSameCondominio(resource.data.condominioId);
+      
+      // Apenas responsavel, admin e adminMaster podem criar/editar/deletar
+      allow create, update, delete: if hasAnyRole(['responsavel', 'admin', 'adminMaster']);
+    }
+    
+    // ✅ COLEÇÃO: porteiros
+    match /porteiros/{porteiroId} {
+      // Qualquer usuário autenticado do mesmo condomínio pode ler
+      allow read: if isAuthenticated() && isSameCondominio(resource.data.condominioId);
+      
+      // Apenas responsavel, admin e adminMaster podem criar/editar/deletar
+      allow create, update, delete: if hasAnyRole(['responsavel', 'admin', 'adminMaster']);
+    }
+    
+    // ✅ COLEÇÃO: correspondencias
+    match /correspondencias/{correspondenciaId} {
+      // Qualquer usuário autenticado do mesmo condomínio pode ler
+      allow read: if isAuthenticated() && isSameCondominio(resource.data.condominioId);
+      
+      // Porteiro, responsavel, admin e adminMaster podem criar
+      allow create: if hasAnyRole(['porteiro', 'responsavel', 'admin', 'adminMaster']);
+      
+      // Porteiro, responsavel, admin e adminMaster podem atualizar (marcar como retirado)
+      allow update: if hasAnyRole(['porteiro', 'responsavel', 'admin', 'adminMaster']) 
+                    && isSameCondominio(resource.data.condominioId);
+      
+      // Apenas admin e adminMaster podem deletar
+      allow delete: if hasAnyRole(['admin', 'adminMaster']);
+    }
+    
+    // ✅ COLEÇÃO: moradores
+    match /moradores/{moradorId} {
+      // Qualquer usuário autenticado do mesmo condomínio pode ler
+      allow read: if isAuthenticated() && isSameCondominio(resource.data.condominioId);
+      
+      // Apenas responsavel, admin e adminMaster podem criar/editar/deletar
+      allow create, update, delete: if hasAnyRole(['responsavel', 'admin', 'adminMaster']);
+    }
+    
+    // ✅ Regra padrão: negar tudo que não foi explicitamente permitido
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
