@@ -1,204 +1,146 @@
-"use client";
-
-import { useEffect, useState, Suspense } from "react";
-import { useSearchParams, usePathname } from "next/navigation";
+import { useState } from "react";
 import { db } from "@/app/lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
-import Image from "next/image";
 import { 
-  User, Home, CheckCircle, Clock, FileText, AlertTriangle, Zap 
-} from "lucide-react";
-import { Browser } from '@capacitor/browser';
+  collection, 
+  addDoc, 
+  Timestamp, 
+  query, 
+  where, 
+  orderBy, 
+  getDocs, 
+  limit 
+} from "firebase/firestore";
+import { useAuth } from "@/hooks/useAuth";
 
-interface Dados {
-  id: string;
-  tipo: "correspondencia" | "aviso"; 
-  protocolo: string;
+export interface CriarAvisoRapidoDTO {
+  enviadoPorId: string;
+  enviadoPorNome: string;
+  enviadoPorRole: string;
+  moradorId: string;
   moradorNome: string;
+  moradorTelefone: string;
+  condominioId: string;
+  blocoId: string;
   blocoNome: string;
   apartamento: string;
-  status: string;
-  dataChegada?: any;
-  criadoEm?: any;
-  retiradoEm?: any;
-  retiradoPorNome?: string;
-  fotoUrl?: string;   
-  imagemUrl?: string; 
-  reciboUrl?: string; 
-  mensagem?: string;
+  mensagem: string;
+  protocolo?: string;
+  fotoUrl?: string;
 }
 
-function ConteudoComprovante() {
-  const searchParams = useSearchParams();
-  const pathname = usePathname();
-  
-  const [dados, setDados] = useState<Dados | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [erro, setErro] = useState("");
+export interface AvisoRapido extends CriarAvisoRapidoDTO {
+  id: string;
+  criadoEm: any;
+  dataEnvio: any;
+  status: "enviado" | "erro";
+  imagemUrl?: string; 
+}
 
-  useEffect(() => {
-    const carregarDados = async () => {
-      let idParaBuscar = searchParams.get("id");
+export function useAvisosRapidos() {
+  const { user } = useAuth();
+  const condominioId = user?.condominioId;
 
-      if (!idParaBuscar) {
-        const partes = pathname.split('/');
-        const possivelId = partes[partes.length - 1];
-        if (possivelId && possivelId !== 'ver') {
-          idParaBuscar = possivelId;
-        }
-      }
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-      if (!idParaBuscar) {
-        setLoading(false);
-        setErro("ID não identificado.");
-        return;
-      }
-
-      try {
-        // 1. Tenta buscar na coleção de CORRESPONDÊNCIAS
-        let docRef = doc(db, "correspondencias", idParaBuscar);
-        let docSnap = await getDoc(docRef);
-        let tipoRegistro: "correspondencia" | "aviso" = "correspondencia";
-
-        // 2. Se não achar, tenta buscar na coleção de AVISOS RAPIDOS (Corrigido)
-        if (!docSnap.exists()) {
-            // 👇 AQUI ESTAVA O ERRO: mudei de 'avisos' para 'avisos_rapidos'
-            docRef = doc(db, "avisos_rapidos", idParaBuscar);
-            docSnap = await getDoc(docRef);
-            tipoRegistro = "aviso";
-        }
-
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          setDados({ 
-              id: docSnap.id, 
-              tipo: tipoRegistro,
-              ...data,
-              status: data.status || (tipoRegistro === 'aviso' ? 'pendente' : 'pendente'),
-              protocolo: data.protocolo || 'S/N'
-          } as Dados);
-        } else {
-          setErro("Registro não encontrado ou link expirado.");
-        }
-      } catch (err) {
-        console.error(err);
-        setErro("Erro ao carregar as informações.");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    carregarDados();
-  }, [searchParams, pathname]);
-
-  const abrirRecibo = async () => {
-    if (dados?.reciboUrl) {
-      await Browser.open({ url: dados.reciboUrl });
+  const registrarAviso = async (dados: CriarAvisoRapidoDTO) => {
+    setLoading(true);
+    try {
+      const docRef = await addDoc(collection(db, "avisos_rapidos"), {
+        ...dados,
+        criadoEm: Timestamp.now(),
+        dataEnvio: Timestamp.now(), 
+        protocolo: dados.protocolo || null,
+        fotoUrl: dados.fotoUrl || null,
+        status: "enviado"
+      });
+      return docRef.id;
+    } catch (err: any) {
+      console.error("❌ Erro ao registrar:", err);
+      throw err;
+    } finally {
+      setLoading(false);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-[#057321]"></div>
-        <p className="mt-4 text-gray-500 font-medium">Localizando registro...</p>
-      </div>
-    );
-  }
+  const buscarAvisos = async (params?: { condominioId: string }, limite = 50) => {
+    const targetCondominio = params?.condominioId || condominioId;
+    if (!targetCondominio) return [];
+    
+    setLoading(true);
+    try {
+      const avisosRef = collection(db, "avisos_rapidos");
+      const q = query(
+        avisosRef,
+        where("condominioId", "==", targetCondominio),
+        orderBy("criadoEm", "desc"),
+        limit(limite)
+      );
 
-  if (erro || !dados) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
-        <div className="bg-white p-8 rounded-2xl shadow-lg text-center max-w-md w-full">
-          <div className="bg-red-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-            <AlertTriangle size={32} className="text-red-600" />
-          </div>
-          <h1 className="text-xl font-bold text-gray-900 mb-2">Atenção</h1>
-          <p className="text-gray-600">{erro}</p>
-        </div>
-      </div>
-    );
-  }
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          status: (data.status === "enviado" || data.status === "erro") ? data.status : "enviado",
+          dataEnvio: data.criadoEm || data.dataEnvio 
+        };
+      }) as AvisoRapido[];
+      
+    } catch (err: any) {
+      console.error("❌ Erro ao buscar avisos:", err);
+      return [];
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const isRetirado = dados.status === "retirada";
-  const isAviso = dados.tipo === "aviso";
+  const buscarAvisosHoje = async (targetCondominioId?: string) => {
+    const condId = targetCondominioId || condominioId;
+    if (!condId) return [];
 
-  return (
-    <div className="min-h-screen bg-gray-100 py-8 px-4 flex justify-center items-center">
-      <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-gray-200">
-        
-        <div className={`p-8 text-center relative overflow-hidden ${
-            isRetirado ? 'bg-[#057321]' : isAviso ? 'bg-blue-600' : 'bg-yellow-500'
-        }`}>
-          <div className="relative z-10">
-            <div className="bg-white/20 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 backdrop-blur-sm shadow-inner">
-              {isRetirado ? <CheckCircle size={40} className="text-white" /> : 
-               isAviso ? <Zap size={40} className="text-white" /> : 
-               <Clock size={40} className="text-white" />}
-            </div>
-            
-            <h1 className="text-2xl font-black text-white tracking-tight">
-              {isRetirado ? "ENTREGA CONCLUÍDA" : isAviso ? "AVISO IMPORTANTE" : "AGUARDANDO RETIRADA"}
-            </h1>
-            
-            <div className="mt-2 inline-block bg-black/20 px-3 py-1 rounded-lg">
-              <p className="text-white font-mono text-sm tracking-wider">PROTOCOLO: {dados.protocolo}</p>
-            </div>
-          </div>
-        </div>
+    setLoading(true);
+    try {
+      const hoje = new Date();
+      hoje.setHours(0, 0, 0, 0);
+      
+      const amanha = new Date(hoje);
+      amanha.setDate(hoje.getDate() + 1);
 
-        <div className="p-6 space-y-6">
-          <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 flex items-start gap-4">
-            <div className="bg-white p-2.5 rounded-full shadow-sm text-gray-600"><User size={24} /></div>
-            <div>
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-wide">Destinatário</p>
-                <p className="font-bold text-gray-900 text-lg leading-tight">{dados.moradorNome}</p>
-                <div className="flex items-center gap-1 text-sm text-gray-600 mt-1">
-                    <Home size={14} /> 
-                    <span>{dados.blocoNome} - Apto {dados.apartamento}</span>
-                </div>
-            </div>
-          </div>
+      const q = query(
+        collection(db, "avisos_rapidos"),
+        where("condominioId", "==", condId),
+        where("criadoEm", ">=", Timestamp.fromDate(hoje)),
+        where("criadoEm", "<", Timestamp.fromDate(amanha)),
+        orderBy("criadoEm", "desc")
+      );
 
-          {dados.mensagem && (
-              <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 text-blue-900 text-sm">
-                  <p className="font-bold mb-1">Mensagem:</p>
-                  {dados.mensagem}
-              </div>
-          )}
+      const snapshot = await getDocs(q);
 
-          {(dados.fotoUrl || dados.imagemUrl) && (
-            <div className="mt-4">
-                <div className="relative h-64 w-full rounded-2xl overflow-hidden border-2 border-gray-100 shadow-sm bg-gray-100 group">
-                    <Image 
-                        src={dados.fotoUrl || dados.imagemUrl || ""} 
-                        alt="Foto" 
-                        fill 
-                        className="object-contain group-hover:scale-105 transition-transform duration-500" 
-                    />
-                </div>
-            </div>
-          )}
+      return snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          status: (data.status === "enviado" || data.status === "erro") ? data.status : "enviado",
+          dataEnvio: data.criadoEm || data.dataEnvio 
+        };
+      }) as AvisoRapido[];
 
-          {isRetirado && dados.reciboUrl && (
-              <button 
-                onClick={abrirRecibo} 
-                className="flex items-center justify-center gap-2 w-full py-4 bg-gray-900 text-white rounded-xl font-bold shadow-lg hover:bg-black transition-all mt-4 active:scale-95"
-              >
-                <FileText size={20} /> 
-                Baixar Recibo PDF
-              </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
+    } catch (err: any) {
+      console.error("❌ Erro busca hoje:", err);
+      return [];
+    } finally {
+      setLoading(false);
+    }
+  };
 
-export default function VerComprovantePage() {
-  return (
-    <Suspense fallback={<div className="p-10 text-center">Carregando...</div>}>
-      <ConteudoComprovante />
-    </Suspense>
-  );
+  return {
+    registrarAviso,
+    buscarAvisos,
+    buscarAvisosHoje,
+    loading,
+    error,
+  };
 }
