@@ -10,11 +10,12 @@ interface Props {
   telefoneMorador: string;
   emailMorador: string;
   pdfUrl: string;
-  mensagemFormatada?: string; // AQUI ESTÁ A CHAVE
+  mensagemFormatada?: string;
   onClose: () => void;
 }
 
 export default function ModalSucessoRetirada({
+  id, // Precisamos do ID para criar o link
   protocolo,
   moradorNome,
   telefoneMorador,
@@ -25,16 +26,25 @@ export default function ModalSucessoRetirada({
   
   const [copiado, setCopiado] = useState(false);
 
+  // Gera o link público (usando o domínio oficial ou a variável de ambiente)
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://appcorrespondencia.com.br";
+  const linkPublico = `${baseUrl}/ver?id=${id}`;
+
   const handleWhatsApp = () => {
     if (!telefoneMorador) {
       alert("Telefone do morador não disponível.");
       return;
     }
 
-    // Se tiver a mensagem formatada (bonita), usa ela. Senão, usa o padrão simples.
-    const textoFinal = mensagemFormatada 
-      ? mensagemFormatada 
-      : `Olá *${moradorNome}*! A correspondência (Protocolo: ${protocolo}) foi retirada.\n\nAcesse o recibo aqui: ${pdfUrl}`;
+    // 1. Pega a mensagem base (ou a formatada ou a padrão)
+    let textoBase = mensagemFormatada;
+    
+    if (!textoBase) {
+      textoBase = `Olá *${moradorNome}*! A correspondência (Protocolo: ${protocolo}) foi retirada.`;
+    }
+
+    // 2. Adiciona o link do comprovante no final OBRIGATORIAMENTE
+    const textoFinal = `${textoBase}\n\n🔗 *Acesse o recibo digital:*\n${linkPublico}`;
 
     const numeroLimpo = telefoneMorador.replace(/\D/g, "");
     const numeroComPrefixo = numeroLimpo.startsWith('55') ? `+${numeroLimpo}` : `+55${numeroLimpo}`;
@@ -43,9 +53,11 @@ export default function ModalSucessoRetirada({
   };
 
   const handleCopiarTexto = () => {
-    const texto = mensagemFormatada || `Correspondência ${protocolo} retirada. Recibo: ${pdfUrl}`;
+    // Mesma lógica para o botão de copiar
+    let textoBase = mensagemFormatada || `Correspondência ${protocolo} retirada.`;
+    const textoFinal = `${textoBase}\n\nRecibo: ${linkPublico}`;
     
-    navigator.clipboard.writeText(texto).then(() => {
+    navigator.clipboard.writeText(textoFinal).then(() => {
       setCopiado(true);
       setTimeout(() => setCopiado(false), 2000);
     });
@@ -97,15 +109,16 @@ export default function ModalSucessoRetirada({
               {copiado ? "Texto Copiado!" : "Copiar Mensagem"}
             </button>
 
+            {/* Botão extra para abrir o PDF direto se quiser */}
             {pdfUrl && (
               <a
-                href={pdfUrl}
+                href={linkPublico} // Alterado para abrir a visualização web
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full flex items-center justify-center gap-3 py-3.5 rounded-xl border border-gray-300 text-gray-700 font-bold hover:bg-gray-50 transition-all"
               >
                 <FileText size={20} />
-                Visualizar Recibo PDF
+                Visualizar Recibo
               </a>
             )}
           </div>
