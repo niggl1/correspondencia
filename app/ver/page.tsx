@@ -10,15 +10,14 @@ import {
 } from "lucide-react";
 import { Browser } from '@capacitor/browser';
 
-// Interface unificada para aceitar dados de Encomenda ou Aviso
 interface Dados {
   id: string;
-  tipo: "correspondencia" | "aviso"; // Identifica o tipo
+  tipo: "correspondencia" | "aviso"; 
   protocolo: string;
   moradorNome: string;
   blocoNome: string;
   apartamento: string;
-  status: string; // 'pendente', 'retirada' ou 'enviado' (para avisos)
+  status: string;
   dataChegada?: any;
   criadoEm?: any;
   retiradoEm?: any;
@@ -26,7 +25,7 @@ interface Dados {
   fotoUrl?: string;   
   imagemUrl?: string; 
   reciboUrl?: string; 
-  mensagem?: string; // Campo extra para avisos
+  mensagem?: string;
 }
 
 function ConteudoComprovante() {
@@ -41,7 +40,6 @@ function ConteudoComprovante() {
     const carregarDados = async () => {
       let idParaBuscar = searchParams.get("id");
 
-      // Fallback para links antigos /ver/ID
       if (!idParaBuscar) {
         const partes = pathname.split('/');
         const possivelId = partes[partes.length - 1];
@@ -62,9 +60,10 @@ function ConteudoComprovante() {
         let docSnap = await getDoc(docRef);
         let tipoRegistro: "correspondencia" | "aviso" = "correspondencia";
 
-        // 2. Se não achar, tenta buscar na coleção de AVISOS
+        // 2. Se não achar, tenta buscar na coleção de AVISOS RAPIDOS (Corrigido)
         if (!docSnap.exists()) {
-            docRef = doc(db, "avisos", idParaBuscar);
+            // 👇 AQUI ESTAVA O ERRO: mudei de 'avisos' para 'avisos_rapidos'
+            docRef = doc(db, "avisos_rapidos", idParaBuscar);
             docSnap = await getDoc(docRef);
             tipoRegistro = "aviso";
         }
@@ -75,7 +74,6 @@ function ConteudoComprovante() {
               id: docSnap.id, 
               tipo: tipoRegistro,
               ...data,
-              // Garante campos padrão caso faltem no aviso
               status: data.status || (tipoRegistro === 'aviso' ? 'pendente' : 'pendente'),
               protocolo: data.protocolo || 'S/N'
           } as Dados);
@@ -122,8 +120,6 @@ function ConteudoComprovante() {
     );
   }
 
-  // Lógica de Status
-  // Se for aviso, consideramos "pendente" como apenas um comunicado
   const isRetirado = dados.status === "retirada";
   const isAviso = dados.tipo === "aviso";
 
@@ -131,7 +127,6 @@ function ConteudoComprovante() {
     <div className="min-h-screen bg-gray-100 py-8 px-4 flex justify-center items-center">
       <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-gray-200">
         
-        {/* Cabeçalho dinâmico */}
         <div className={`p-8 text-center relative overflow-hidden ${
             isRetirado ? 'bg-[#057321]' : isAviso ? 'bg-blue-600' : 'bg-yellow-500'
         }`}>
@@ -152,7 +147,6 @@ function ConteudoComprovante() {
           </div>
         </div>
 
-        {/* Corpo */}
         <div className="p-6 space-y-6">
           <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 flex items-start gap-4">
             <div className="bg-white p-2.5 rounded-full shadow-sm text-gray-600"><User size={24} /></div>
@@ -166,7 +160,6 @@ function ConteudoComprovante() {
             </div>
           </div>
 
-          {/* Se for Aviso, mostra a mensagem extra se houver */}
           {dados.mensagem && (
               <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 text-blue-900 text-sm">
                   <p className="font-bold mb-1">Mensagem:</p>
@@ -174,7 +167,6 @@ function ConteudoComprovante() {
               </div>
           )}
 
-          {/* Foto */}
           {(dados.fotoUrl || dados.imagemUrl) && (
             <div className="mt-4">
                 <div className="relative h-64 w-full rounded-2xl overflow-hidden border-2 border-gray-100 shadow-sm bg-gray-100 group">
@@ -188,7 +180,6 @@ function ConteudoComprovante() {
             </div>
           )}
 
-          {/* Botão de Baixar Recibo (Apenas se retirado) */}
           {isRetirado && dados.reciboUrl && (
               <button 
                 onClick={abrirRecibo} 
