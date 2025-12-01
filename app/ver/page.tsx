@@ -6,19 +6,19 @@ import { db } from "@/app/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
 import Image from "next/image";
 import { 
-  User, Home, CheckCircle, Clock, FileText, AlertTriangle 
+  User, Home, CheckCircle, Clock, FileText, AlertTriangle, Zap 
 } from "lucide-react";
-// 👇 Importação do Plugin para abrir PDF no Android
 import { Browser } from '@capacitor/browser';
 
-// Interface dos dados
+// Interface unificada para aceitar dados de Encomenda ou Aviso
 interface Dados {
   id: string;
+  tipo: "correspondencia" | "aviso"; // Identifica o tipo
   protocolo: string;
   moradorNome: string;
   blocoNome: string;
   apartamento: string;
-  status: string;
+  status: string; // 'pendente', 'retirada' ou 'enviado' (para avisos)
   dataChegada?: any;
   criadoEm?: any;
   retiradoEm?: any;
@@ -26,6 +26,7 @@ interface Dados {
   fotoUrl?: string;   
   imagemUrl?: string; 
   reciboUrl?: string; 
+  mensagem?: string; // Campo extra para avisos
 }
 
 function ConteudoComprovante() {
@@ -40,7 +41,7 @@ function ConteudoComprovante() {
     const carregarDados = async () => {
       let idParaBuscar = searchParams.get("id");
 
-      // --- LÓGICA HÍBRIDA: Tenta recuperar ID de links antigos ---
+      // Fallback para links antigos /ver/ID
       if (!idParaBuscar) {
         const partes = pathname.split('/');
         const possivelId = partes[partes.length - 1];
@@ -56,11 +57,28 @@ function ConteudoComprovante() {
       }
 
       try {
-        const docRef = doc(db, "correspondencias", idParaBuscar);
-        const docSnap = await getDoc(docRef);
+        // 1. Tenta buscar na coleção de CORRESPONDÊNCIAS
+        let docRef = doc(db, "correspondencias", idParaBuscar);
+        let docSnap = await getDoc(docRef);
+        let tipoRegistro: "correspondencia" | "aviso" = "correspondencia";
+
+        // 2. Se não achar, tenta buscar na coleção de AVISOS
+        if (!docSnap.exists()) {
+            docRef = doc(db, "avisos", idParaBuscar);
+            docSnap = await getDoc(docRef);
+            tipoRegistro = "aviso";
+        }
 
         if (docSnap.exists()) {
-          setDados({ id: docSnap.id, ...docSnap.data() } as Dados);
+          const data = docSnap.data();
+          setDados({ 
+              id: docSnap.id, 
+              tipo: tipoRegistro,
+              ...data,
+              // Garante campos padrão caso faltem no aviso
+              status: data.status || (tipoRegistro === 'aviso' ? 'pendente' : 'pendente'),
+              protocolo: data.protocolo || 'S/N'
+          } as Dados);
         } else {
           setErro("Registro não encontrado ou link expirado.");
         }
@@ -75,14 +93,6 @@ function ConteudoComprovante() {
     carregarDados();
   }, [searchParams, pathname]);
 
-  // Formata datas
-  const formatarData = (timestamp: any) => {
-    if (!timestamp) return "---";
-    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-    return isNaN(date.getTime()) ? "---" : date.toLocaleString('pt-BR');
-  };
-
-  // 👇 FUNÇÃO ESPECIAL PARA ABRIR PDF NO ANDROID
   const abrirRecibo = async () => {
     if (dados?.reciboUrl) {
       await Browser.open({ url: dados.reciboUrl });
@@ -93,7 +103,7 @@ function ConteudoComprovante() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100">
         <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-[#057321]"></div>
-        <p className="mt-4 text-gray-500 font-medium">Localizando correspondência...</p>
+        <p className="mt-4 text-gray-500 font-medium">Localizando registro...</p>
       </div>
     );
   }
@@ -112,21 +122,30 @@ function ConteudoComprovante() {
     );
   }
 
+  // Lógica de Status
+  // Se for aviso, consideramos "pendente" como apenas um comunicado
   const isRetirado = dados.status === "retirada";
+  const isAviso = dados.tipo === "aviso";
 
   return (
     <div className="min-h-screen bg-gray-100 py-8 px-4 flex justify-center items-center">
       <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-gray-200">
         
-        {/* Cabeçalho */}
-        <div className={`p-8 text-center relative overflow-hidden ${isRetirado ? 'bg-[#057321]' : 'bg-yellow-500'}`}>
+        {/* Cabeçalho dinâmico */}
+        <div className={`p-8 text-center relative overflow-hidden ${
+            isRetirado ? 'bg-[#057321]' : isAviso ? 'bg-blue-600' : 'bg-yellow-500'
+        }`}>
           <div className="relative z-10">
             <div className="bg-white/20 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 backdrop-blur-sm shadow-inner">
-              {isRetirado ? <CheckCircle size={40} className="text-white" /> : <Clock size={40} className="text-white" />}
+              {isRetirado ? <CheckCircle size={40} className="text-white" /> : 
+               isAviso ? <Zap size={40} className="text-white" /> : 
+               <Clock size={40} className="text-white" />}
             </div>
+            
             <h1 className="text-2xl font-black text-white tracking-tight">
-              {isRetirado ? "ENTREGA CONCLUÍDA" : "AGUARDANDO RETIRADA"}
+              {isRetirado ? "ENTREGA CONCLUÍDA" : isAviso ? "AVISO IMPORTANTE" : "AGUARDANDO RETIRADA"}
             </h1>
+            
             <div className="mt-2 inline-block bg-black/20 px-3 py-1 rounded-lg">
               <p className="text-white font-mono text-sm tracking-wider">PROTOCOLO: {dados.protocolo}</p>
             </div>
@@ -147,16 +166,29 @@ function ConteudoComprovante() {
             </div>
           </div>
 
+          {/* Se for Aviso, mostra a mensagem extra se houver */}
+          {dados.mensagem && (
+              <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 text-blue-900 text-sm">
+                  <p className="font-bold mb-1">Mensagem:</p>
+                  {dados.mensagem}
+              </div>
+          )}
+
           {/* Foto */}
           {(dados.fotoUrl || dados.imagemUrl) && (
             <div className="mt-4">
-                <div className="relative h-56 w-full rounded-2xl overflow-hidden border-2 border-gray-100 shadow-sm bg-gray-100">
-                    <Image src={dados.fotoUrl || dados.imagemUrl || ""} alt="Foto" fill className="object-contain" />
+                <div className="relative h-64 w-full rounded-2xl overflow-hidden border-2 border-gray-100 shadow-sm bg-gray-100 group">
+                    <Image 
+                        src={dados.fotoUrl || dados.imagemUrl || ""} 
+                        alt="Foto" 
+                        fill 
+                        className="object-contain group-hover:scale-105 transition-transform duration-500" 
+                    />
                 </div>
             </div>
           )}
 
-          {/* Botão de Ação (Agora usando Browser.open) */}
+          {/* Botão de Baixar Recibo (Apenas se retirado) */}
           {isRetirado && dados.reciboUrl && (
               <button 
                 onClick={abrirRecibo} 
