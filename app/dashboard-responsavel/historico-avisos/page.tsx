@@ -157,6 +157,7 @@ function HistoricoAvisosResponsavelPage() {
           <div className="space-y-4">
             {avisos.map((aviso) => {
               const linkFoto = aviso.fotoUrl || aviso.imagemUrl;
+              
               return (
                 <div
                   key={aviso.id}
@@ -208,15 +209,15 @@ function HistoricoAvisosResponsavelPage() {
                           </div>
                       )}
 
-                      {/* Link da Foto */}
+                      {/* Link da Foto (Corrigido para evitar erro de window) */}
                       {linkFoto && (
                           <a 
-                             href={linkFoto} 
+                             href={`/ver/${aviso.id}`}
                              target="_blank" 
                              rel="noopener noreferrer"
-                             className="inline-flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-semibold transition-colors"
+                             className="inline-flex items-center gap-2 px-4 py-2 bg-green-50 text-[#057321] border border-green-200 rounded-lg hover:bg-green-100 text-sm font-bold transition-colors mt-2"
                           >
-                              <ImageIcon size={16} /> Ver foto enviada <ExternalLink size={12} />
+                              <ImageIcon size={16} /> Ver foto anexada <ExternalLink size={12} />
                           </a>
                       )}
 

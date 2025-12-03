@@ -12,6 +12,7 @@ import { gerarReciboPDF } from "@/utils/gerarReciboPDF";
 import { LoadingOverlay } from "@/components/LoadingOverlay";
 import ModalSucessoRetirada from "./ModalSucessoRetirada";
 import type { ConfiguracoesRetirada, DadosRetirada } from "@/types/retirada.types";
+import { useTemplates } from "@/hooks/useTemplates"; // <--- IMPORTANTE: Hook de Templates
 
 interface Props {
   correspondencia: any;
@@ -71,8 +72,12 @@ export default function ModalRetiradaProfissional({
   onSuccess,
   embedded = false, 
 }: Props) {
-  const { user } = useAuth(); // O hook pode retornar user undefined
+  const { user } = useAuth(); 
   
+  // --- Hook de Templates (NOVO) ---
+  const { getFormattedMessage } = useTemplates(user?.condominioId || "");
+  // --------------------------------
+
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState("Processando...");
@@ -204,7 +209,6 @@ export default function ModalRetiradaProfissional({
         nomeQuemRetirou: nomeQuemRetirou.trim(),
         cpfQuemRetirou: cpfQuemRetirou.trim() || undefined,
         telefoneQuemRetirou: telefoneQuemRetirou.trim() || undefined,
-        // CORREÇÃO 1: Adicionado fallback (|| "Porteiro") para evitar erro
         nomePorteiro: user?.nome || "Porteiro", 
         dataHoraRetirada: new Date().toISOString(),
         assinaturaMorador: assinaturaMorador || undefined,
@@ -238,30 +242,28 @@ export default function ModalRetiradaProfissional({
       setFinalPdfUrl(publicPdfUrl); 
       setProgress(100);
       
-      // --- MENSAGEM FORMATADA ---
+      // --- GERAÇÃO DA MENSAGEM VIA TEMPLATE (CORREÇÃO AQUI) ---
       const dataHoje = new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
       
-      const textoQuemRetirou = nomeQuemRetirou.trim().toLowerCase() === correspondencia.moradorNome?.toLowerCase() 
-          ? `Retirado por: ${correspondencia.moradorNome}`
-          : `Retirado por: ${nomeQuemRetirou}`;
+      const variaveis = {
+        MORADOR: correspondencia.moradorNome,
+        UNIDADE: correspondencia.apartamento || correspondencia.unidade || "",
+        BLOCO: correspondencia.blocoNome || "",
+        PROTOCOLO: correspondencia.protocolo,
+        QUEM_RETIROU: nomeQuemRetirou,
+        DATA_HORA: dataHoje,
+        RASTREIO: correspondencia.rastreio || "N/A",
+        CONDOMINIO: correspondencia.condominioNome || "Condomínio"
+      };
 
-      const msg = `*AVISO DE RETIRADA*
+      // 1. Busca o template configurado
+      const msgBase = await getFormattedMessage('PICKUP', variaveis);
+      
+      // 2. Adiciona o link do PDF no final
+      const msgFinal = `${msgBase}\n\nVer comprovante: ${publicPdfUrl}`;
 
-Olá, *${correspondencia.moradorNome}*!
-Unidade: ${correspondencia.apartamento} (${correspondencia.blocoNome})
-
-Sua correspondência foi entregue
-━━━━━━━━━━━━━━━━
-│ *PROTOCOLO: ${correspondencia.protocolo}*
-│ Status: ✅ ENTREGUE
-│ ${textoQuemRetirou}
-│ Data: ${dataHoje}
-━━━━━━━━━━━━━━━━
-
-Se você não reconhece esta retirada, entre em contato com a portaria imediatamente.`;
-
-      setMensagemFormatada(msg);
-      // --------------------------
+      setMensagemFormatada(msgFinal);
+      // -------------------------------------------------------
 
       setLoading(false);
       setShowSuccessModal(true);
@@ -294,7 +296,6 @@ Se você não reconhece esta retirada, entre em contato com a portaria imediatam
               batchWrites.push(setDoc(retiradaRef, removerUndefined({
                 correspondenciaId: correspondencia.id,
                 protocolo: correspondencia.protocolo,
-                // CORREÇÃO 2: Adicionado fallback (|| "") para evitar erro
                 condominioId: user?.condominioId || "", 
                 ...dadosRetirada,
                 status: "concluida",
@@ -326,7 +327,7 @@ Se você não reconhece esta retirada, entre em contato com a portaria imediatam
             telefoneMorador={moradorPhone}
             emailMorador={moradorEmail}
             pdfUrl={finalPdfUrl}
-            mensagemFormatada={mensagemFormatada}
+            mensagemFormatada={mensagemFormatada} // Passando a mensagem formatada corretamente
             onClose={handleCloseSuccess} 
           />
       );
@@ -441,6 +442,3 @@ Se você não reconhece esta retirada, entre em contato com a portaria imediatam
     </div>
   );
 }
-
-
-

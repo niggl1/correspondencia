@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo, useCallback, memo } from "react";
 import {
   Printer, MessageCircle, Mail, X, FileText, CheckCircle,
-  Archive, Search, Filter, Package, RefreshCcw
+  Archive, Search, Filter, Package, RefreshCcw, Clock
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useCorrespondencias } from "@/hooks/useCorrespondencias";
@@ -89,6 +89,13 @@ const TabelaInterna = memo(({
     });
   }, [dados, filtroStatus, busca]);
 
+  const formatarData = (timestamp?: Timestamp) => {
+    if (!timestamp || !timestamp.toDate) return "-";
+    return timestamp.toDate().toLocaleString('pt-BR', {
+        day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+    });
+  };
+
   if (carregando && dados.length === 0) {
       return <div className="text-center py-10"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#057321] mx-auto"></div></div>;
   }
@@ -146,6 +153,12 @@ const TabelaInterna = memo(({
                 </div>
                 <p className="text-gray-900 font-semibold text-sm truncate mt-1">{l.moradorNome}</p>
                 <p className="text-gray-500 text-xs font-medium mt-0.5">{l.blocoNome} • Apto {l.apartamento}</p>
+                
+                {/* Data no Mobile */}
+                <div className="flex items-center gap-1.5 mt-2 text-xs text-gray-500 font-medium">
+                   <Clock size={14} className="text-gray-400" />
+                   {formatarData(l.criadoEm)}
+                </div>
               </div>
             </div>
             <div className="mt-4 pt-3 border-t border-gray-100 grid grid-cols-2 gap-2.5">
@@ -174,6 +187,7 @@ const TabelaInterna = memo(({
               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Foto</th>
               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Protocolo</th>
               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Morador</th>
+              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Chegada</th>
               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
               <th className="px-6 py-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Ações</th>
             </tr>
@@ -188,6 +202,13 @@ const TabelaInterna = memo(({
                 <td className="px-6 py-4">
                   <div className="font-semibold text-gray-900 text-sm">{l.moradorNome}</div>
                   <div className="text-xs text-gray-500 font-medium mt-0.5">{l.blocoNome} • Apto {l.apartamento}</div>
+                </td>
+                {/* Coluna Data/Hora Desktop */}
+                <td className="px-6 py-4">
+                   <div className="flex items-center gap-2 text-sm text-gray-600 font-medium">
+                      <Clock size={16} className="text-gray-400" />
+                      {formatarData(l.criadoEm)}
+                   </div>
                 </td>
                 <td className="px-6 py-4">
                   {l.status === "retirada" ? (

@@ -12,10 +12,11 @@ import { doc, getDoc, collection, setDoc, Timestamp } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import Navbar from "@/components/Navbar";
 import withAuth from "@/components/withAuth";
-import { Package, FileText, CheckCircle, Loader2 } from "lucide-react";
+import { Package, FileText, CheckCircle, Loader2, Building2, Camera, MapPin, MessageCircle } from "lucide-react"; 
 import { gerarEtiquetaPDF } from "@/utils/gerarEtiquetaPDF"; 
-import { useCorrespondencias } from "@/hooks/useCorrespondencias";
 import BotaoVoltar from "@/components/BotaoVoltar";
+import { useTemplates } from "@/hooks/useTemplates"; 
+import MessageConfigModal from "@/components/MessageConfigModal"; 
 
 // --- FUNÇÃO DE COMPRESSÃO ---
 const compressImage = async (file: File): Promise<File> => {
@@ -72,21 +73,28 @@ const fileToBase64 = (file: File): Promise<string> => {
     });
 };
 
-function NovaCorrespondenciaPage() {
+function NovaCorrespondenciaResponsavelPage() {
   const router = useRouter();
   const { role, condominioId, user } = useAuth() as any;
-  const { enviarEmailViaAPI } = useCorrespondencias();
   
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState("Processando...");
   
+  // --- Configuração de Mensagens ---
+  const { getFormattedMessage } = useTemplates(condominioId || "");
+  const [showConfigModal, setShowConfigModal] = useState(false);
+  // --------------------------------
+
+  // Estados do formulário
   const [selectedCondominio, setSelectedCondominio] = useState("");
   const [selectedBloco, setSelectedBloco] = useState("");
   const [selectedMorador, setSelectedMorador] = useState("");
   const [observacao, setObservacao] = useState("");
+  const [localArmazenamento, setLocalArmazenamento] = useState("Portaria"); // NOVO: Local
   const [imagemFile, setImagemFile] = useState<File | null>(null);
 
+  // Estados de sucesso/modal
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [protocolo, setProtocolo] = useState("");
   const [moradorNome, setMoradorNome] = useState("");
@@ -95,13 +103,14 @@ function NovaCorrespondenciaPage() {
   const [pdfUrl, setPdfUrl] = useState("");        
   const [linkPublico, setLinkPublico] = useState(""); 
   
-  // NOVO: Estado para a mensagem formatada
   const [mensagemFormatada, setMensagemFormatada] = useState("");
   
   const backgroundTaskRef = useRef<Promise<void> | null>(null);
 
-  const backRoute = role === 'porteiro' ? '/dashboard-porteiro' : '/dashboard-responsavel';
-  const efetivoCondominioId = (role === "adminMaster" || role === "admin") ? selectedCondominio : condominioId || "";
+  // Rota de voltar para o responsável
+  const backRoute = '/dashboard-responsavel';
+  
+  const efetivoCondominioId = condominioId || "";
 
   const handleUpload = (file: File | null) => setImagemFile(file);
   const limparTelefone = (telefone: string) => telefone.replace(/\D/g, "");
@@ -114,16 +123,16 @@ function NovaCorrespondenciaPage() {
     }
     const fetchDadosMorador = async () => {
       try {
-          const mRef = doc(db, "users", selectedMorador);
-          const mSnap = await getDoc(mRef);
-          if (mSnap.exists()) {
-            const data = mSnap.data();
-            setTelefoneMorador(limparTelefone(data.whatsapp || ""));
-            setEmailMorador(data.email || "");
-            setMoradorNome(data.nome || "");
-          }
+        const mRef = doc(db, "users", selectedMorador);
+        const mSnap = await getDoc(mRef);
+        if (mSnap.exists()) {
+          const data = mSnap.data();
+          setTelefoneMorador(limparTelefone(data.whatsapp || ""));
+          setEmailMorador(data.email || "");
+          setMoradorNome(data.nome || "");
+        }
       } catch (err) {
-          console.error(err);
+        console.error("Erro ao buscar morador:", err);
       }
     };
     fetchDadosMorador();
@@ -132,33 +141,37 @@ function NovaCorrespondenciaPage() {
   const buscarNomes = async () => {
     let condominioNome = "", blocoNome = "", nomeMorador = "", apartamento = "";
     
-    if (efetivoCondominioId) {
-       const cSnap = await getDoc(doc(db, "condominios", efetivoCondominioId));
-       condominioNome = cSnap.data()?.nome || efetivoCondominioId;
-    }
-    if (selectedBloco) {
-       const bSnap = await getDoc(doc(db, "blocos", selectedBloco));
-       blocoNome = bSnap.data()?.nome || selectedBloco;
-    }
-    if (selectedMorador) {
-       const mSnap = await getDoc(doc(db, "users", selectedMorador));
-       if (mSnap.exists()) {
-           const data = mSnap.data();
-           nomeMorador = data.nome || selectedMorador;
-           apartamento = data.apartamento || data.unidade || data.unidadeNome || data.numero || "";
-       }
+    try {
+        if (efetivoCondominioId) {
+           const cSnap = await getDoc(doc(db, "condominios", efetivoCondominioId));
+           condominioNome = cSnap.data()?.nome || efetivoCondominioId;
+        }
+        if (selectedBloco) {
+           const bSnap = await getDoc(doc(db, "blocos", selectedBloco));
+           blocoNome = bSnap.data()?.nome || selectedBloco;
+        }
+        if (selectedMorador) {
+           const mSnap = await getDoc(doc(db, "users", selectedMorador));
+           if (mSnap.exists()) {
+               const data = mSnap.data();
+               nomeMorador = data.nome || selectedMorador;
+               apartamento = data.apartamento || data.unidade || data.unidadeNome || data.numero || "";
+           }
+        }
+    } catch (err) {
+        console.error("Erro ao buscar nomes:", err);
     }
     return { condominioNome, blocoNome, moradorNome: nomeMorador, apartamento };
   };
 
   const salvar = async () => {
     if (!efetivoCondominioId || !selectedBloco || !selectedMorador) {
-      alert("Preencha todos os campos obrigatórios.");
+      alert("Selecione o Bloco e o Morador.");
       return;
     }
 
     setLoading(true);
-    setMessage("Preparando arquivos...");
+    setMessage("Iniciando registro...");
     setProgress(10);
     setLinkPublico(""); 
 
@@ -166,7 +179,6 @@ function NovaCorrespondenciaPage() {
       const nomes = await buscarNomes();
       const novoProtocolo = `${Math.floor(Date.now() / 1000).toString().slice(-6)}`;
       
-      // GERA O ID E O LINK IMEDIATAMENTE
       const docRef = doc(collection(db, "correspondencias"));
       const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
       const novoLinkPublico = `${baseUrl}/ver/${docRef.id}`;
@@ -176,23 +188,21 @@ function NovaCorrespondenciaPage() {
       let fotoBase64ParaPDF = "";
 
       if (imagemFile) {
-         setMessage("Otimizando imagem...");
+         setMessage("Processando foto...");
          try {
              arquivoFinal = await compressImage(imagemFile);
              setProgress(30);
              fotoBase64ParaPDF = await fileToBase64(arquivoFinal);
          } catch (e) {
-             console.error("Erro img:", e);
+             console.error("Erro na compressão, usando original:", e);
              fotoBase64ParaPDF = await fileToBase64(imagemFile);
          }
       }
 
-      const nomeUser = user?.nome || "Não identificado";
-      const roleMap: Record<string, string> = { 'porteiro': 'Porteiro', 'responsavel': 'Responsável', 'admin': 'Admin', 'adminMaster': 'Admin Master' };
-      const cargoUser = roleMap[role] || role;
-      const responsavelRegistro = `${nomeUser} (${cargoUser})`;
+      const nomeUser = user?.nome || "Responsável";
+      const responsavelRegistro = `${nomeUser} (Gestão)`;
 
-      setMessage("Gerando etiqueta...");
+      setMessage("Criando etiqueta...");
       const pdfBlob = await gerarEtiquetaPDF({
           protocolo: novoProtocolo,
           condominioNome: nomes.condominioNome,
@@ -201,7 +211,7 @@ function NovaCorrespondenciaPage() {
           apartamento: nomes.apartamento, 
           dataChegada: new Date().toISOString(),
           recebidoPor: responsavelRegistro,
-          observacao,
+          observacao: `${observacao} (Local: ${localArmazenamento})`,
           fotoUrl: fotoBase64ParaPDF,
           logoUrl: "/logo-app-correspondencia.png"
       });
@@ -212,37 +222,30 @@ function NovaCorrespondenciaPage() {
       setProgress(100);
 
       // -------------------------------------------------------
-      // NOVO: GERAÇÃO DA MENSAGEM FORMATADA PARA WHATSAPP
+      // GERAÇÃO DA MENSAGEM DINÂMICA
       // -------------------------------------------------------
       const dataAtual = new Date();
       const dataFormatada = dataAtual.toLocaleDateString('pt-BR');
       const horaFormatada = dataAtual.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
-      const msgTemplate = `*AVISO DE CORRESPONDÊNCIA*
+      const variaveis = {
+        MORADOR: nomes.moradorNome,
+        UNIDADE: nomes.apartamento,
+        BLOCO: nomes.blocoNome,
+        PROTOCOLO: novoProtocolo,
+        LOCAL: localArmazenamento,
+        RECEBIDO_POR: nomeUser,
+        DATA_HORA: `${dataFormatada}, ${horaFormatada}`,
+        CONDOMINIO: nomes.condominioNome || "Condomínio" 
+      };
 
-Olá, *${nomes.moradorNome}*!
-Unidade: ${nomes.apartamento} (${nomes.blocoNome})
-
-Você recebeu uma correspondência
-━━━━━━━━━━━━━━━━
-│ *PROTOCOLO: ${novoProtocolo}*
-│ Local: Portaria
-│ Recebido por: ${nomeUser}
-│ Chegada: ${dataFormatada}, ${horaFormatada}
-━━━━━━━━━━━━━━━━
-
-*FOTO E QR CODE:*
-${novoLinkPublico}
-
-Aguardamos a sua retirada`;
-
-      setMensagemFormatada(msgTemplate);
+      const msgBase = await getFormattedMessage('ARRIVAL', variaveis);
+      setMensagemFormatada(`${msgBase}\n${novoLinkPublico}`);
       // -------------------------------------------------------
 
       setLoading(false);
       setShowSuccessModal(true);
 
-      // BACKGROUND TASK
       backgroundTaskRef.current = (async () => {
           try {
               const pdfRef = ref(storage, `correspondencias/entrada_${novoProtocolo}_${Date.now()}.pdf`);
@@ -265,48 +268,41 @@ Aguardamos a sua retirada`;
                   apartamento: nomes.apartamento,
                   protocolo: novoProtocolo,
                   observacao,
-                  status: "pendente",
+                  localArmazenamento, 
+                  status: "pendente", 
                   criadoEm: Timestamp.now(),
-                  criadoPor: user?.email || "sistema",
+                  criadoPor: user?.email || "responsavel",
                   criadoPorNome: nomeUser, 
-                  criadoPorCargo: cargoUser,
+                  criadoPorCargo: "Responsável",
                   imagemUrl: publicFotoUrl,
                   pdfUrl: publicPdfUrl,
                   moradorTelefone: telefoneMorador,
                   moradorEmail: emailMorador
               });
 
-              console.log("✅ [Background] Salvo com sucesso! ID:", docRef.id);
+              console.log("✅ [Background] Correspondência salva com sucesso! ID:", docRef.id);
 
           } catch (err) {
-              console.error("❌ [Background] Erro ao salvar:", err);
+              console.error("❌ [Background] Erro crítico ao salvar:", err);
           }
       })();
 
     } catch (err) {
       console.error(err);
       setLoading(false);
-      alert("Erro ao processar. Tente novamente.");
+      alert("Ocorreu um erro ao processar. Verifique sua conexão e tente novamente.");
     }
   };
 
-  // --- CORREÇÃO DO FECHAMENTO DO MODAL ---
   const handleCloseSuccess = async () => {
-      // Aguarda o upload terminar para evitar dados inconsistentes
       if (backgroundTaskRef.current) await backgroundTaskRef.current;
       
-      // Limpa todos os campos
       setObservacao("");
       setImagemFile(null);
       setPdfUrl("");
       setLinkPublico("");
-      setMensagemFormatada(""); // Limpa a mensagem
-      
-      // Limpa seleções para forçar o usuário a selecionar novamente (segurança)
+      setMensagemFormatada("");
       setSelectedMorador(""); 
-      // Opcional: setSelectedBloco(""); 
-      
-      // Fecha o modal
       setShowSuccessModal(false);
   };
 
@@ -315,73 +311,136 @@ Aguardamos a sua retirada`;
   };
 
   const handleReenviarEmail = async () => {
-      alert("O sistema envia e-mails automaticamente em background.");
+      alert("O e-mail já está sendo enviado automaticamente pelo sistema.");
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-green-50/30">
       <Navbar />
       
       <LoadingOverlay isVisible={loading} progress={progress} message={message} />
 
       {showSuccessModal && (
           <ModalSucessoEntrada 
-             protocolo={protocolo}
-             moradorNome={moradorNome}
-             telefoneMorador={telefoneMorador}
-             emailMorador={emailMorador}
-             pdfUrl={pdfUrl}
-             linkPublico={linkPublico} 
-             mensagemFormatada={mensagemFormatada} // Passando a mensagem
-             onClose={handleCloseSuccess}
-             onImprimir={handleImprimir}
-             onReenviarEmail={handleReenviarEmail}
+              protocolo={protocolo}
+              moradorNome={moradorNome}
+              telefoneMorador={telefoneMorador}
+              emailMorador={emailMorador}
+              pdfUrl={pdfUrl}
+              linkPublico={linkPublico} 
+              mensagemFormatada={mensagemFormatada} 
+              onClose={handleCloseSuccess}
+              onImprimir={handleImprimir}
+              onReenviarEmail={handleReenviarEmail}
           />
       )}
       
-      <main className="max-w-4xl mx-auto px-4 pt-12 mt-8 pb-12">
+      <main className="max-w-4xl mx-auto px-4 pt-24 pb-12">
         
         <BotaoVoltar url={backRoute} />
         
-        <div className="mb-8 flex items-center gap-4">
-          <div className="w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg" style={{ background: 'linear-gradient(135deg, #057321 0%, #0a9f2f 100%)' }}>
-            <Package className="text-white" size={32} />
+        <div className="mb-8 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg bg-gradient-to-br from-[#057321] to-[#046119]">
+              <Building2 className="text-white" size={32} />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Nova Encomenda</h1>
+              <p className="text-gray-600">Gestão de Entrada</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Nova Correspondência</h1>
-            <p className="text-gray-600">Painel do Responsável</p>
-          </div>
+          
+          <button 
+            onClick={() => setShowConfigModal(true)}
+            className="px-4 py-2.5 bg-[#057321] text-white text-sm font-bold rounded-xl shadow-md hover:bg-[#046119] transition-all flex items-center gap-2 uppercase tracking-wide"
+            title="Configurar Mensagem Automática"
+          >
+            <MessageCircle size={20} />
+            Mensagem Whatsapp
+          </button>
         </div>
 
         <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
-          <div className="h-1.5" style={{ background: 'linear-gradient(90deg, #057321 0%, #0a9f2f 100%)' }}></div>
-          <div className="p-6 space-y-4">
-            <div>
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2"><Package size={18} color='#057321' /> Destinatário</label>
-              <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-                <SelectCondominioBlocoMorador onSelect={({ condominioId, blocoId, moradorId }) => { setSelectedCondominio(condominioId); setSelectedBloco(blocoId); setSelectedMorador(moradorId); }} />
-              </div>
+          <div className="h-1.5 bg-gradient-to-r from-[#057321] to-[#0a9f2f]"></div>
+          <div className="p-6 space-y-6">
+            
+            <div className="bg-gray-50 p-5 rounded-xl border border-gray-200 shadow-sm">
+              <label className="flex items-center gap-2 text-base font-bold text-gray-800 mb-3">
+                <Package size={20} className="text-[#057321]" /> Destinatário
+              </label>
+              <SelectCondominioBlocoMorador 
+                  onSelect={({ condominioId, blocoId, moradorId }) => { 
+                      setSelectedCondominio(condominioId); 
+                      setSelectedBloco(blocoId); 
+                      setSelectedMorador(moradorId); 
+                  }} 
+              />
             </div>
+
             <div>
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2"><FileText size={18} color='#057321' /> Observações</label>
-              <textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} placeholder="Ex.: Caixa média..." className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 focus:border-[#057321] outline-none" rows={3} />
+              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
+                <MapPin size={18} className="text-[#057321]" /> Local de Armazenamento
+              </label>
+              <select
+                value={localArmazenamento}
+                onChange={(e) => setLocalArmazenamento(e.target.value)}
+                className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 focus:border-[#057321] focus:ring-4 focus:ring-[#057321]/10 outline-none transition-all bg-white text-gray-800 font-medium cursor-pointer"
+              >
+                <option value="Portaria">Portaria Principal</option>
+                <option value="Locker">Locker / Armário Inteligente</option>
+                <option value="Sala de Encomendas">Sala de Encomendas</option>
+                <option value="Recepção">Recepção</option>
+                <option value="Administração">Administração</option>
+              </select>
             </div>
+
             <div>
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2"><Package size={18} color='#057321' /> Foto do pacote (opcional)</label>
-              <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
+                <FileText size={18} className="text-[#057321]" /> Detalhes / Observação
+              </label>
+              <textarea 
+                value={observacao} 
+                onChange={(e) => setObservacao(e.target.value)} 
+                placeholder="Ex: Caixa grande Amazon, Envelope bancário..." 
+                className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 focus:border-[#057321] focus:ring-4 focus:ring-[#057321]/10 outline-none transition-all placeholder:text-gray-400" 
+                rows={3} 
+              />
+            </div>
+
+            <div>
+              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
+                <Camera size={18} className="text-[#057321]" /> Foto da Encomenda (Opcional)
+              </label>
+              <div className="bg-gray-50 rounded-xl p-4 border border-gray-200 border-dashed hover:border-[#057321] transition-colors">
                 <UploadImagem onUpload={handleUpload} />
               </div>
             </div>
+
             <div className="pt-2">
-              <button onClick={salvar} disabled={loading} className="w-full py-4 text-white rounded-xl font-semibold text-lg shadow-lg disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: loading ? '#9ca3af' : 'linear-gradient(135deg, #057321 0%, #0a9f2f 100%)' }}>
-                {loading ? <Loader2 className="animate-spin" size={22} /> : <CheckCircle size={22} />} {loading ? "Processando..." : "Registrar correspondência"}
+              <button 
+                onClick={salvar} 
+                disabled={loading} 
+                className="w-full py-4 text-white rounded-xl font-bold text-lg shadow-lg disabled:opacity-50 flex items-center justify-center gap-3 transition-all hover:shadow-xl hover:scale-[1.01] active:scale-[0.99] bg-gradient-to-r from-[#057321] to-[#046119]"
+              >
+                {loading ? <Loader2 className="animate-spin" size={24} /> : <CheckCircle size={24} />} 
+                {loading ? "Registrando..." : "Registrar Entrada"}
               </button>
             </div>
+
           </div>
         </div>
+
+        {/* Modal de Configuração */}
+        <MessageConfigModal
+          isOpen={showConfigModal}
+          onClose={() => setShowConfigModal(false)}
+          condoId={efetivoCondominioId}
+          category="ARRIVAL"
+        />
+
       </main>
     </div>
   );
 }
 
-export default withAuth(NovaCorrespondenciaPage, ['responsavel', 'admin', 'adminMaster', 'porteiro']);
+export default withAuth(NovaCorrespondenciaResponsavelPage, ['responsavel', 'adminMaster']);

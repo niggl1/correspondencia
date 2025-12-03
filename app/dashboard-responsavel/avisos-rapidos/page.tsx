@@ -5,8 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useAvisosRapidos } from "@/hooks/useAvisosRapidos";
 import { db, storage } from "@/app/lib/firebase";
-// 👇 Adicionei 'doc' e 'updateDoc' aqui
-import { collection, query, where, getDocs, doc, updateDoc } from "firebase/firestore";
+import { collection, query, where, getDocs } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import Navbar from "@/components/Navbar";
 import BotaoVoltar from "@/components/BotaoVoltar"; 
@@ -101,9 +100,12 @@ function AvisosRapidosPage() {
   const [enviando, setEnviando] = useState(false);
   const [protocoloGerado, setProtocoloGerado] = useState("");
 
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://appcorrespondencia.com.br";
+  // ✅ PEGAR URL BASE DO SITE AUTOMATICAMENTE
+  const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
   const LINK_SISTEMA = `${baseUrl}/login`;
   
+  // --- MENSAGEM PADRÃO AJUSTADA (V3) ---
+  // Removido "E QR CODE" conforme solicitado
   const MSG_PADRAO = `*AVISO DE CORRESPONDÊNCIA*
 
 Olá, *{{NOME}}*!
@@ -119,10 +121,12 @@ Você recebeu uma correspondência
 {{FOTO}}
 
 Aguardamos a sua retirada`;
+  // -------------------------------------------------
   
   const [mensagemTemplate, setMensagemTemplate] = useState<string>(MSG_PADRAO);
   const [mostrarConfigMsg, setMostrarConfigMsg] = useState(false);
 
+  // CHAVE ATUALIZADA PARA V3 PARA FORÇAR A TROCA NO SEU NAVEGADOR
   const STORAGE_KEY = "aviso_msg_template_v3";
 
   const getBackUrl = () => {
@@ -265,7 +269,7 @@ Aguardamos a sua retirada`;
          arquivoFinal = await compressImage(imagemAviso);
       }
 
-      // 1. Registrar no banco (inicialmente sem foto)
+      // 1. Registrar no banco
       const avisoId = await registrarAviso({
         enviadoPorId: user?.uid || "",
         enviadoPorNome: user?.nome || "Porteiro",
@@ -282,21 +286,15 @@ Aguardamos a sua retirada`;
         fotoUrl: "", 
       });
 
-      // 2. Upload da foto e ATUALIZAÇÃO DO DOCUMENTO
+      // 2. Upload da foto
       if (arquivoFinal && avisoId) {
          const storageRef = ref(storage, `avisos/${avisoId}_${Date.now()}.jpg`);
          await uploadBytes(storageRef, arquivoFinal);
          publicFotoUrl = await getDownloadURL(storageRef);
-
-         // ✅ A CORREÇÃO ESTÁ AQUI:
-         // Agora salvamos o link da foto dentro do documento do aviso
-         await updateDoc(doc(db, "avisos_rapidos", avisoId), {
-             fotoUrl: publicFotoUrl
-         });
       }
 
       // 3. Gerar Link
-      const linkParaMensagem = `${baseUrl}/ver?id=${avisoId}`;
+      const linkParaMensagem = `${baseUrl}/ver/${avisoId}`;
 
       let mensagemFinal = mensagemTemplate
         .replace("{{NOME}}", moradorParaEnvio.nome)
@@ -304,9 +302,10 @@ Aguardamos a sua retirada`;
         .replace("{{PROTOCOLO}}", protocoloGerado)
         .replace("{{LINK}}", LINK_SISTEMA);
 
+      // Substitui {{FOTO}} pelo link limpo
       mensagemFinal = mensagemFinal.replace("{{FOTO}}", linkParaMensagem);
 
-      const whatsappLink = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(mensagemFinal)}`;
+      const whatsappLink = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(mensagemFinal)}`;
       window.open(whatsappLink, "_blank");
 
       setSucesso(`Aviso enviado para ${moradorParaEnvio.nome}!`);
@@ -413,7 +412,7 @@ Aguardamos a sua retirada`;
                 <History size={24} /> <span className="font-bold text-sm uppercase">Histórico</span>
             </button>
             <button onClick={() => setMostrarConfigMsg(!mostrarConfigMsg)} className={`bg-[#057321] border-2 border-[#046019] text-white px-6 py-4 rounded-xl shadow-md hover:bg-[#046019] transition-all flex items-center justify-center gap-3 h-20 ${mostrarConfigMsg ? 'ring-4 ring-green-200' : ''}`}>
-                <Settings size={24} /> <span className="font-bold text-sm uppercase">Configurar Msg</span>
+                <Settings size={24} /> <span className="font-bold text-sm uppercase">Configurar msg WhatsApp</span>
             </button>
         </div>
 
@@ -535,3 +534,7 @@ Aguardamos a sua retirada`;
 }
 
 export default withAuth(AvisosRapidosPage, ["porteiro", "responsavel"]);
+
+
+
+

@@ -96,6 +96,10 @@ function RegistrarRetiradaPorteiroPage() {
       const termo = termoParaBuscar.trim();
       const resultsMap = new Map<string, CorrespondenciaDocument>();
 
+      // Preparar termos para busca de nome (Case Insensitive workaround)
+      // Ex: se digitar "morador", cria também "Morador" para buscar
+      const termoCapitalizado = termo.charAt(0).toUpperCase() + termo.slice(1).toLowerCase();
+
       // 1. Busca por Protocolo
       const qProtocolo = query(
         collection(db, "correspondencias"),
@@ -109,7 +113,7 @@ function RegistrarRetiradaPorteiroPage() {
         where("status", "==", "pendente")
       );
 
-      // 3. Busca por Nome (Pendentes) - Case sensitive no Firebase, cuidado
+      // 3. Busca por Nome (Como digitado)
       const qNome = query(
         collection(db, "correspondencias"),
         where("moradorNome", ">=", termo),
@@ -117,19 +121,39 @@ function RegistrarRetiradaPorteiroPage() {
         where("status", "==", "pendente")
       );
 
-      // ✅ OTIMIZAÇÃO: Executa as 3 buscas em paralelo
-      const [snapProtocolo, snapApartamento, snapNome] = await Promise.all([
+      // Array de Promises
+      const promisesBusca = [
         getDocs(qProtocolo),
         getDocs(qApartamento),
         getDocs(qNome)
-      ]);
+      ];
+
+      // 4. Busca por Nome (Capitalizado) - Só adiciona se for diferente do original
+      if (termoCapitalizado !== termo) {
+        promisesBusca.push(
+            getDocs(query(
+                collection(db, "correspondencias"),
+                where("moradorNome", ">=", termoCapitalizado),
+                where("moradorNome", "<=", termoCapitalizado + "\uf8ff"),
+                where("status", "==", "pendente")
+            ))
+        );
+      }
+
+      // Executa todas as buscas
+      const snapshots = await Promise.all(promisesBusca);
+
+      // Separa o snap de protocolo para verificação específica
+      const snapProtocolo = snapshots[0]; 
 
       const processarDoc = (doc: any) => {
         const data = doc.data();
         
         // Se buscou por protocolo e já foi retirada, avisa o porteiro
         if (data.status === "retirada" && snapProtocolo.docs.some(d => d.id === doc.id)) {
-          if (snapApartamento.empty && snapNome.empty) {
+          // Só mostra erro de retirada se não encontrou nada por nome ou apto nas outras queries
+          const outrosEncontraram = snapshots.slice(1).some(snap => !snap.empty);
+          if (!outrosEncontraram) {
              setError(`A correspondência do protocolo ${termo} já foi retirada.`);
           }
           return;
@@ -140,16 +164,13 @@ function RegistrarRetiradaPorteiroPage() {
         }
       };
 
-      snapProtocolo.forEach(processarDoc);
-      snapApartamento.forEach(processarDoc);
-      snapNome.forEach(processarDoc);
+      snapshots.forEach(snap => snap.forEach(processarDoc));
 
       const resultados = Array.from(resultsMap.values());
 
       if (resultados.length === 0) {
         if (!error) setError("Nenhuma correspondência pendente encontrada.");
       } else if (resultados.length === 1) {
-        // Se só achou uma, já abre o modal direto (Agilidade pro porteiro)
         setCorrespondenciaSelecionada(resultados[0]);
         setShowModal(true);
       } else {
@@ -447,3 +468,4 @@ export default withAuth(RegistrarRetiradaPorteiroPage, [
   "responsavel",
   "adminMaster",
 ]);
+

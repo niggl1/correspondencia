@@ -22,7 +22,8 @@ import {
   UserCog,
   CheckSquare,
   Download,
-  Link as LinkIcon
+  Link as LinkIcon,
+  MessageSquare // Importado o ícone de mensagem
 } from "lucide-react";
 import GerarFolder from "@/components/GerarFolder";
 import MenuGestaoCondominio from "@/components/MenuGestaoCondominio";
@@ -330,7 +331,8 @@ function DashboardResponsavel() {
                         </h3>
                     </div>
                     
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-6">
+                    {/* ALTERAÇÃO AQUI: Mudado grid-cols-4 para grid-cols-5 para acomodar o novo botão */}
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 p-6">
                          <div onClick={() => router.push("/dashboard-responsavel/blocos")} className="flex flex-col items-center justify-center gap-2 p-4 bg-white border border-gray-100 rounded-xl hover:bg-green-50 cursor-pointer transition-all shadow-sm group">
                              <Building2 size={32} className="text-[#057321]" />
                              <span className="font-bold text-gray-700">Blocos</span>
@@ -350,6 +352,13 @@ function DashboardResponsavel() {
                              <CheckSquare size={32} className="text-[#057321]" />
                              <span className="font-bold text-gray-700">Aprovar</span>
                              <span className="text-xs text-gray-400">{stats.pendentes} Pendentes</span>
+                         </div>
+                         
+                         {/* NOVO BOTÃO DE CONFIGURAÇÃO DE MENSAGENS */}
+                         <div onClick={() => router.push("/dashboard-responsavel/configuracao-mensagens")} className="flex flex-col items-center justify-center gap-2 p-4 bg-white border border-gray-100 rounded-xl hover:bg-green-50 cursor-pointer transition-all shadow-sm group">
+                             <MessageSquare size={32} className="text-[#057321]" />
+                             <span className="font-bold text-gray-700 text-center">Mensagens</span>
+                             <span className="text-xs text-gray-400">Configurar</span>
                          </div>
                     </div>
                 </div>

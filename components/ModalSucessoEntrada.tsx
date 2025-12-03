@@ -2,6 +2,9 @@
 
 import React, { useState } from "react";
 import { CheckCircle, MessageCircle, Mail, FileText, Printer, Loader2, Copy } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { useTemplates } from "@/hooks/useTemplates";
+import { parseTemplate } from "@/utils/templateParser";
 
 interface Props {
   protocolo: string;
@@ -10,7 +13,7 @@ interface Props {
   emailMorador?: string;
   pdfUrl?: string;        
   linkPublico?: string;   
-  mensagemFormatada?: string; // Recebe o texto completo da página anterior (se houver)
+  mensagemFormatada?: string;
   onClose: () => void;
   onImprimir: () => void;
   onReenviarEmail: () => void;
@@ -30,14 +33,15 @@ export default function ModalSucessoEntrada({
 }: Props) {
 
   const [copiado, setCopiado] = useState(false);
+  
+  const { user } = useAuth();
+  const { templates } = useTemplates(user?.condominioId || "");
 
   const limparTelefone = (telefone: string) => telefone.replace(/\D/g, "");
 
-  // Função que gera o texto com o estilo "Caixa" e Negritos solicitados
   const gerarMensagemPadrao = () => {
     const dataHoje = new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
     
-    // AQUI ESTÃO AS MUDANÇAS DE NEGRITO (*)
     return `*AVISO DE CORRESPONDÊNCIA*
 
 Olá, *${moradorNome}*!
@@ -50,9 +54,33 @@ Você recebeu uma correspondência
 ━━━━━━━━━━━━━━━━
 
 *FOTO E QR CODE:*
-${linkPublico}
+${linkPublico || "Aguarde..."}
 
 Aguardamos a sua retirada`;
+  };
+
+  const getTextoFinal = () => {
+    if (mensagemFormatada) return mensagemFormatada;
+
+    const customTemplate = templates.find(t => t.category === 'ARRIVAL' && t.isActive);
+
+    if (customTemplate && customTemplate.content) {
+      // CORREÇÃO AQUI: Usamos "as any" para evitar erro se a propriedade não existir no tipo estrito
+      const nomeCondominio = (user as any)?.condominioNome || (user as any)?.nomeCondominio || "Condomínio";
+
+      return parseTemplate(customTemplate.content, {
+        NOME: moradorNome,
+        PROTOCOLO: protocolo,
+        CODIGO: protocolo,
+        LINK: linkPublico || "Aguarde o link...",
+        DATA: new Date().toLocaleString('pt-BR'),
+        CONDOMINIO: nomeCondominio, 
+        BLOCO: "", 
+        APTO: ""   
+      });
+    }
+
+    return gerarMensagemPadrao();
   };
 
   const handleWhatsApp = () => {
@@ -60,22 +88,18 @@ Aguardamos a sua retirada`;
     
     if (!linkPublico && !mensagemFormatada) return alert("O link público do PDF ainda está sendo gerado. Aguarde um momento.");
 
-    // LÓGICA:
-    // 1. Se vier "mensagemFormatada" da página anterior (com bloco/unidade), usa ela.
-    // 2. Se não, usa a "gerarMensagemPadrao" criada aqui em cima.
-    const textoFinal = mensagemFormatada ? mensagemFormatada : gerarMensagemPadrao();
+    const textoFinal = getTextoFinal();
     
     const telefoneFinal = limparTelefone(telefoneMorador);
     const numeroComPrefixo = telefoneFinal.startsWith('55') ? `+${telefoneFinal}` : `+55${telefoneFinal}`;
     
-    // encodeURIComponent é essencial para o negrito e quebras de linha funcionarem
     const whatsLink = `https://wa.me/${numeroComPrefixo}?text=${encodeURIComponent(textoFinal)}`;
     
     window.open(whatsLink, "_blank");
   };
 
   const handleCopiarTexto = () => {
-    const texto = mensagemFormatada ? mensagemFormatada : gerarMensagemPadrao();
+    const texto = getTextoFinal();
     
     navigator.clipboard.writeText(texto).then(() => {
       setCopiado(true);
@@ -178,7 +202,3 @@ Aguardamos a sua retirada`;
     </div>
   );
 }
-
-
-
-

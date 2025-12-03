@@ -2,7 +2,7 @@
 import { useEffect, useState, useMemo } from "react";
 import {
   Printer, MessageCircle, Mail, X, FileText, CheckCircle,
-  Archive, Search, Filter, Package
+  Archive, Search, Filter, Package, Calendar
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useCorrespondencias } from "@/hooks/useCorrespondencias";
@@ -68,6 +68,16 @@ const TabelaInterna = ({
     });
   }, [dados, filtroStatus, busca]);
 
+  // Função auxiliar de formatação de data
+  const formatarData = (timestamp?: Timestamp) => {
+    if (!timestamp) return "-";
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp as any);
+    return date.toLocaleString('pt-BR', {
+      day: '2-digit', month: '2-digit', year: '2-digit',
+      hour: '2-digit', minute: '2-digit'
+    });
+  };
+
   return (
     <div className="space-y-5">
       {/* Filtros */}
@@ -121,21 +131,27 @@ const TabelaInterna = ({
               </div>
 
               <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-bold text-gray-900 text-base truncate">
-                    #{l.protocolo}
-                  </span>
-
-                  {/* STATUS seguindo suas regras */}
-                  {l.status === "retirada" ? (
-                    <span className="inline-flex items-center px-4 py-1.5 rounded-full text-[12px] font-bold bg-[#057321] text-white border border-[#057321] shadow-sm shrink-0">
+                <div className="flex justify-between items-start mb-1">
+                   <span className="text-[10px] font-bold text-gray-400 flex items-center gap-1 bg-gray-50 px-2 py-0.5 rounded-md">
+                      <Calendar size={10} /> {formatarData(l.criadoEm)}
+                   </span>
+                   
+                   {/* STATUS seguindo suas regras */}
+                   {l.status === "retirada" ? (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#057321] text-white border border-[#057321] shadow-sm shrink-0">
                       Retirada
                     </span>
                   ) : (
-                    <span className="inline-flex items-center px-4 py-1.5 rounded-full text-[12px] font-bold bg-white text-[#057321] border border-[#057321] shadow-sm shrink-0">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-white text-[#057321] border border-[#057321] shadow-sm shrink-0">
                       Pendente
                     </span>
                   )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-gray-900 text-base truncate">
+                    #{l.protocolo}
+                  </span>
                 </div>
 
                 <p className="text-gray-900 font-semibold text-sm truncate mt-1">
@@ -187,6 +203,7 @@ const TabelaInterna = ({
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Foto</th>
+              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Data / Hora</th>
               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Protocolo</th>
               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Morador</th>
               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
@@ -208,6 +225,13 @@ const TabelaInterna = ({
                       <Package className="text-gray-400" size={20} />
                     </div>
                   )}
+                </td>
+
+                <td className="px-6 py-4 text-gray-600 font-medium text-sm whitespace-nowrap">
+                  <div className="flex items-center gap-2">
+                    <Calendar size={16} className="text-gray-400" />
+                    {formatarData(l.criadoEm)}
+                  </div>
                 </td>
 
                 <td className="px-6 py-4 font-semibold text-gray-900 whitespace-nowrap">
@@ -271,7 +295,7 @@ const TabelaInterna = ({
 
             {!lista.length && (
               <tr>
-                <td colSpan={5} className="px-6 py-16 text-center">
+                <td colSpan={6} className="px-6 py-16 text-center">
                   <div className="flex flex-col items-center gap-2">
                     <Package size={40} className="text-gray-300" />
                     <p className="text-gray-700 font-semibold">Nenhuma correspondência encontrada</p>
@@ -422,7 +446,7 @@ Sua correspondência foi entregue
 │ Data: ${dataRetirada}
 ━━━━━━━━━━━━━━━━
 
-Se você não reconhece esta retirada, entre em contato com a portaria imediatamente.`;
+Se você não reconhece esta retirada, entre em contato com a portaria imediatamente.\n\nAcesse o recibo digital: ${linkCurto}`;
     
     const num = limparTelefone(tel).startsWith('55') ? `+${limparTelefone(tel)}` : `+55${limparTelefone(tel)}`;
     window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`, "_blank");

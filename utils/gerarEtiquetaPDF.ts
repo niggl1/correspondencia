@@ -46,9 +46,8 @@ export async function gerarEtiquetaPDF(dados: DadosEtiqueta): Promise<Blob> {
   doc.setFillColor(verdeOficial);
   doc.rect(0, 0, pageWidth, headerH, "F"); 
 
-  // Logo (Sombra removida conforme solicitado)
+  // Logo
   if (logoBase64) {
-    // Ajustei ligeiramente o tamanho/posição para ocupar o espaço onde ficava o quadrado da sombra
     doc.addImage(logoBase64, "PNG", margin, 5, 25, 25);
   }
 
@@ -73,7 +72,6 @@ export async function gerarEtiquetaPDF(dados: DadosEtiqueta): Promise<Blob> {
   // Data/Hora
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
-  // Nota: Corrigi um pequeno typo no seu código original: `Data/Hora: $` parecia incompleto
   const dataFormatada = new Date(dados.dataChegada).toLocaleString("pt-BR");
   doc.text(`Data/Hora: ${dataFormatada}`, margin + 35, 30);
 
@@ -202,21 +200,19 @@ export async function gerarEtiquetaPDF(dados: DadosEtiqueta): Promise<Blob> {
   // RODAPÉ (NOVO ESTILO VERDE)
   // ==========================================
   const pageH = doc.internal.pageSize.getHeight();
-  const footerHeight = 20; // Altura do rodapé
+  const footerHeight = 20; 
 
-  // Retângulo Verde do Rodapé
   doc.setFillColor(verdeOficial);
   doc.rect(0, pageH - footerHeight, pageWidth, footerHeight, "F");
 
-  // Texto do Rodapé
   doc.setFontSize(8);
-  doc.setTextColor(255, 255, 255); // Cor branca
+  doc.setTextColor(255, 255, 255); 
   doc.setFont("helvetica", "italic");
   
   doc.text(
     `Documento gerado automaticamente em ${new Date().toLocaleString("pt-BR")}`, 
     pageWidth / 2, 
-    pageH - (footerHeight / 2) + 3, // Centralizado verticalmente no rodapé
+    pageH - (footerHeight / 2) + 3, 
     { align: "center" }
   );
 

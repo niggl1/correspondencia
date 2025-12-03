@@ -7,9 +7,15 @@ import ModalRetiradaProfissional from "@/components/ModalRetiradaProfissional";
 import { collection, query, where, getDocs, DocumentData } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import { 
-  Package, Search, AlertCircle, ArrowLeft, User, Home, Calendar, Clock, QrCode, X, Settings 
+  Package, Search, AlertCircle, ArrowLeft, User, Home, Calendar, Clock, QrCode, X, Settings, MessageSquare 
 } from "lucide-react"; 
 import Navbar from "@/components/Navbar"; 
+
+// Hook de Autenticação para pegar o ID do condomínio
+import { useAuth } from "@/hooks/useAuth";
+
+// Novo componente de Configuração de Mensagens
+import MessageConfigModal from "@/components/MessageConfigModal";
 
 // Biblioteca de Scanner compatível com Web e Mobile
 import { Scanner } from '@yudiel/react-qr-scanner';
@@ -31,6 +37,7 @@ interface CorrespondenciaDocument extends DocumentData {
 function RegistrarRetiradaResponsavelPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user } = useAuth(); // Hook de usuário adicionado para pegar permissões e ID
   const inputRef = useRef<HTMLInputElement>(null);
   
   const [busca, setBusca] = useState<string>(""); 
@@ -39,41 +46,40 @@ function RegistrarRetiradaResponsavelPage() {
   
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
-  const [showModal, setShowModal] = useState<boolean>(false);
+  
+  // Modais
+  const [showModal, setShowModal] = useState<boolean>(false); // Modal de Retirada
+  const [showConfigModal, setShowConfigModal] = useState<boolean>(false); // Modal de Configuração de Mensagem
 
-  // Estado para controlar se mostra a câmera ou não
   const [mostrarCamera, setMostrarCamera] = useState(false);
 
   const processarLeitura = (conteudo: string) => {
     if (!conteudo) return;
 
-    // Tenta vibrar ao ler (feedback tátil)
     try { if (navigator.vibrate) navigator.vibrate(200); } catch (e) {}
 
     let codigoLimpo = conteudo.trim();
 
-    // Se for URL completa (https://...), pega só o final
     if (codigoLimpo.includes("/")) {
         const partes = codigoLimpo.split("/");
         codigoLimpo = partes[partes.length - 1];
     }
 
-    setMostrarCamera(false); // Fecha a câmera ao ler
+    setMostrarCamera(false);
     setBusca(codigoLimpo);
     buscarCorrespondencia(codigoLimpo);
   };
 
   useEffect(() => {
     const paramQ = searchParams.get("q");
-    // CORREÇÃO AQUI: trocado showScanner por mostrarCamera
-    if (inputRef.current && !showModal && !mostrarCamera) {
+    if (inputRef.current && !showModal && !mostrarCamera && !showConfigModal) {
       inputRef.current.focus();
     }
     if (paramQ) {
       setBusca(paramQ);
       buscarCorrespondencia(paramQ);
     }
-  }, [searchParams, mostrarCamera, showModal]);
+  }, [searchParams, mostrarCamera, showModal, showConfigModal]);
 
   const buscarCorrespondencia = async (termoAutomatico?: string) => {
     const termoParaBuscar = termoAutomatico || busca;
@@ -92,15 +98,15 @@ function RegistrarRetiradaResponsavelPage() {
       const termoString = termoParaBuscar.trim();
       const resultsMap = new Map<string, CorrespondenciaDocument>();
 
-      // --- PASSO 1: BUSCA INTELIGENTE POR PROTOCOLO (Texto e Número) ---
+      // --- PASSO 1: BUSCA POR PROTOCOLO (Texto e Número) ---
       const queriesProtocolo = [];
       
-      // 1.1 Busca como Texto
+      // 1.1 Texto exato
       queriesProtocolo.push(
         getDocs(query(collection(db, "correspondencias"), where("protocolo", "==", termoString)))
       );
 
-      // 1.2 Se for número válido, busca como Número
+      // 1.2 Número
       const termoNumero = Number(termoString);
       if (!isNaN(termoNumero)) {
         queriesProtocolo.push(
@@ -114,13 +120,11 @@ function RegistrarRetiradaResponsavelPage() {
       snapsProtocolo.forEach((snap) => {
         snap.forEach((doc) => {
           const data = doc.data();
-          // Se achou e já foi retirada
           if (data.status === "retirada") {
              setError(`A correspondência do protocolo ${data.protocolo} já foi retirada.`);
              achouPeloProtocolo = true;
              return; 
           }
-          // Se achou e está pendente
           resultsMap.set(doc.id, { id: doc.id, ...data } as CorrespondenciaDocument);
           achouPeloProtocolo = true;
         });
@@ -143,40 +147,59 @@ function RegistrarRetiradaResponsavelPage() {
         return;
       }
 
-      // --- PASSO 2: Busca por Nome ou Apartamento ---
+      // --- PASSO 2: Busca por APARTAMENTO ou NOME (Com tratamento de Case Sensitivity) ---
       
-      const qApartamento = query(
-        collection(db, "correspondencias"),
-        where("apartamento", "==", termoString),
-        where("status", "==", "pendente")
+      const termoCapitalizado = termoString.charAt(0).toUpperCase() + termoString.slice(1).toLowerCase();
+      
+      const promisesBusca = [];
+
+      // 2.1 Busca por Apartamento
+      promisesBusca.push(
+        getDocs(query(
+          collection(db, "correspondencias"),
+          where("apartamento", "==", termoString),
+          where("status", "==", "pendente")
+        ))
       );
 
-      const qNome = query(
-        collection(db, "correspondencias"),
-        where("moradorNome", ">=", termoString),
-        where("moradorNome", "<=", termoString + "\uf8ff"),
-        where("status", "==", "pendente")
+      // 2.2 Busca por Nome (Como digitado)
+      promisesBusca.push(
+        getDocs(query(
+          collection(db, "correspondencias"),
+          where("moradorNome", ">=", termoString),
+          where("moradorNome", "<=", termoString + "\uf8ff"),
+          where("status", "==", "pendente")
+        ))
       );
 
-      const [snapApartamento, snapNome] = await Promise.all([
-        getDocs(qApartamento),
-        getDocs(qNome)
-      ]);
+      // 2.3 Busca por Nome (Capitalizado - Ex: "jose" vira "Jose")
+      if (termoCapitalizado !== termoString) {
+        promisesBusca.push(
+          getDocs(query(
+            collection(db, "correspondencias"),
+            where("moradorNome", ">=", termoCapitalizado),
+            where("moradorNome", "<=", termoCapitalizado + "\uf8ff"),
+            where("status", "==", "pendente")
+          ))
+        );
+      }
+
+      const snapshots = await Promise.all(promisesBusca);
 
       const processarDoc = (doc: any) => {
         const data = doc.data();
-        if (data.status !== "retirada") {
+        // Filtro de segurança extra: verifica se não está retirada
+        if (data.status === "pendente") {
           resultsMap.set(doc.id, { id: doc.id, ...data } as CorrespondenciaDocument);
         }
       };
 
-      snapApartamento.forEach(processarDoc);
-      snapNome.forEach(processarDoc);
+      snapshots.forEach(snap => snap.forEach(processarDoc));
 
       const resultados = Array.from(resultsMap.values());
 
       if (resultados.length === 0) {
-        setError("Nenhuma correspondência pendente encontrada.");
+        setError("Nenhuma correspondência pendente encontrada para este nome, apartamento ou protocolo.");
       } else if (resultados.length === 1) {
         setCorrespondenciaSelecionada(resultados[0]);
         setShowModal(true);
@@ -220,7 +243,6 @@ function RegistrarRetiradaResponsavelPage() {
         <div className="max-w-2xl w-full">
           
           <div className="mb-8">
-            {/* Botão Voltar */}
             <button
               onClick={() => router.back()}
               className="group flex items-center gap-3 bg-white text-gray-700 px-6 py-4 rounded-xl shadow-sm border border-gray-200 hover:shadow-lg hover:scale-[1.02] hover:border-[#057321] hover:text-[#057321] transition-all duration-200 font-bold mb-6 text-lg w-fit"
@@ -240,21 +262,31 @@ function RegistrarRetiradaResponsavelPage() {
             </div>
           </div>
 
-          {/* Botão de Configurações (Centralizado) */}
-          <div className="flex justify-center mb-6">
+          {/* --- BOTÕES DE AÇÃO E CONFIGURAÇÃO --- */}
+          <div className="flex flex-col sm:flex-row justify-center gap-3 mb-6">
+             {/* Botão Existente: Configurar Regras */}
              <button
                 onClick={() => router.push("/dashboard-responsavel/configuracoes-retirada")}
-                className="w-1/2 py-2 bg-[#057321] text-white rounded-lg shadow-md hover:bg-[#046019] transition-all flex items-center justify-center gap-2 border-2 border-[#046019]"
+                className="flex-1 py-3 bg-white text-[#057321] rounded-lg shadow-sm hover:shadow-md hover:bg-green-50 transition-all flex items-center justify-center gap-2 border border-[#057321]"
               >
                  <Settings size={18} />
-                 <span className="font-bold text-sm uppercase">Configurar Regras</span>
+                 <span className="font-bold text-sm uppercase">Regras de Retirada</span>
               </button>
+
+              {/* NOVO BOTÃO: Configurar Mensagens (Apenas para Responsáveis/Admins) */}
+              {user?.role !== 'porteiro' && (
+                <button
+                    onClick={() => setShowConfigModal(true)}
+                    className="flex-1 py-3 bg-[#057321] text-white rounded-lg shadow-md hover:bg-[#046019] transition-all flex items-center justify-center gap-2 border border-[#046019]"
+                >
+                    <MessageSquare size={18} />
+                    <span className="font-bold text-sm uppercase">Mensagem WhatsApp</span>
+                </button>
+              )}
           </div>
         
-          {/* Card de Busca */}
           <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100 mb-6">
             
-            {/* ÁREA DA CÂMERA */}
             {mostrarCamera ? (
                <div className="mb-6 relative bg-black rounded-xl overflow-hidden shadow-inner">
                   <button 
@@ -294,7 +326,6 @@ function RegistrarRetiradaResponsavelPage() {
                     onClick={() => setMostrarCamera(true)}
                     className="w-full mb-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium shadow-md flex items-center justify-center gap-2 transition-all active:scale-95"
                     >
-                        {/* CORREÇÃO: Usando QrCode no lugar de ScanLine */}
                         <QrCode size={24} />
                         Ler QR Code
                     </button>
@@ -334,7 +365,6 @@ function RegistrarRetiradaResponsavelPage() {
             )}
           </div>
 
-          {/* Lista de Resultados */}
           {listaResultados.length > 0 && (
             <div className="animate-fade-in">
               <h3 className="text-lg font-semibold text-gray-800 mb-3 px-1">
@@ -384,7 +414,7 @@ function RegistrarRetiradaResponsavelPage() {
             </div>
           )}
         
-          {/* Modal */}
+          {/* MODAL DE RETIRADA EXISTENTE */}
           {showModal && correspondenciaSelecionada && (
             <ModalRetiradaProfissional
               correspondencia={correspondenciaSelecionada as any} 
@@ -398,6 +428,17 @@ function RegistrarRetiradaResponsavelPage() {
               onSuccess={handleRetiradaSuccess}
             />
           )}
+
+          {/* NOVO MODAL DE CONFIGURAÇÃO (PICKUP) */}
+          {user?.condominioId && (
+            <MessageConfigModal
+              isOpen={showConfigModal}
+              onClose={() => setShowConfigModal(false)}
+              condoId={user.condominioId}
+              category="PICKUP"
+            />
+          )}
+
         </div>
       </div>
     </div>

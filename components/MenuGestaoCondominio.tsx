@@ -8,13 +8,14 @@ import {
   UserCog,   // Porteiros
   Clock,     // Aprovar
   ChevronDown, 
-  Settings   // Ícone do título
+  Settings,   // Ícone do título
+  MessageSquare // Ícone de Mensagens
 } from "lucide-react";
 
 export default function MenuGestaoCondominio() {
   const router = useRouter();
   // Estado: false = fechado, true = aberto
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(true); // Alterei para true para já vir aberto se preferir (opcional)
 
   const itens = [
     { 
@@ -41,6 +42,12 @@ export default function MenuGestaoCondominio() {
       icon: Clock, 
       url: "/dashboard-responsavel/aprovacoes" 
     },
+    { 
+      label: "Mensagens", 
+      subLabel: "Configurar", 
+      icon: MessageSquare, 
+      url: "/dashboard-responsavel/configuracao-mensagens" 
+    },
   ];
 
   return (
@@ -55,9 +62,8 @@ export default function MenuGestaoCondominio() {
             <Settings size={20} />
           </div>
           <div className="text-left">
-            {/* ✅ TÍTULO ALTERADO AQUI */}
-            <h2 className="text-lg font-bold text-gray-900">
-             CADASTRO DE BLOCOS, MORADORES, PORTEIROS E APROVAÇÕES
+            <h2 className="text-lg font-bold text-gray-900 uppercase">
+              Gestão de Cadastros e Configurações
             </h2>
             <p className="text-xs text-gray-500 font-medium md:hidden">
               {isOpen ? "Clique para fechar" : "Clique para ver opções"}
@@ -75,10 +81,11 @@ export default function MenuGestaoCondominio() {
       <div 
         className={`
           transition-all duration-300 ease-in-out overflow-hidden bg-white
-          ${isOpen ? 'max-h-[500px] opacity-100 border-t border-gray-100' : 'max-h-0 opacity-0'}
+          ${isOpen ? 'max-h-[600px] opacity-100 border-t border-gray-100' : 'max-h-0 opacity-0'}
         `}
       >
-        <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+        {/* Ajustei o grid para grid-cols-5 para caber o novo botão na mesma linha em telas grandes */}
+        <div className="p-4 grid grid-cols-2 md:grid-cols-5 gap-3">
           {itens.map((item, index) => (
             <button
               key={index}

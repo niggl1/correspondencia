@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Tradutor from "@/components/Tradutor"; 
 
 export const metadata: Metadata = {
   title: "App Correspondência",
@@ -15,9 +14,6 @@ export default function DashboardLayout({
     <>
       {/* Renderiza o conteúdo da página */}
       {children}
-
-      {/* Adiciona o Tradutor apenas nesta área do porteiro */}
-      <Tradutor /> 
     </>
   );
 }

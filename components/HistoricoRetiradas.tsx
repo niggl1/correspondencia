@@ -1,5 +1,3 @@
-// ARQUIVO: src/components/HistoricoRetiradas.tsx
-
 "use client";
 
 import { useState, useEffect } from "react";
@@ -10,8 +8,6 @@ import {
   Search, Download, MessageCircle, Mail, FileText, ArrowLeft, 
   Calendar, Eye, Share2, Printer, X
 } from "lucide-react";
-// Verifique se o Navbar está sendo importado corretamente para o seu projeto
-// Se o Navbar já estiver no layout global, pode remover essa linha e a tag <Navbar /> abaixo
 import Navbar from "@/components/Navbar"; 
 
 // --- INTERFACES ---
@@ -50,31 +46,88 @@ const ModalSegundaVia = ({
 }) => {
   if (!isOpen || !recibo) return null;
 
-  const linkRecibo = recibo.reciboUrl || recibo.pdfUrl || "";
+  // Definição dos links
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const linkCompartilhamento = `${origin}/ver/${recibo.id}`;
+  const linkArquivo = recibo.reciboUrl || recibo.pdfUrl || "";
 
-  // Lógica WhatsApp
+  // Formatação da Data
+  const getDataFormatada = () => {
+    if (!recibo.dataRetirada) return "Data não informada";
+    // Verifica se é Timestamp do Firestore ou Date normal
+    const seconds = recibo.dataRetirada.seconds;
+    const date = seconds ? new Date(seconds * 1000) : new Date(recibo.dataRetirada);
+    
+    return date.toLocaleString('pt-BR', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit'
+    });
+  };
+
+  // Lógica WhatsApp Corrigida e Ampliada
   const handleWhatsApp = () => {
-    if (!recibo.telefoneMorador) {
-      alert("Telefone do morador não encontrado.");
+    // Garante que estamos trabalhando com string
+    const rawPhone = String(recibo.telefoneMorador || "").trim();
+
+    // 1. Validação inicial
+    if (!rawPhone || rawPhone === "" || rawPhone === "undefined" || rawPhone === "null") {
+      alert("O telefone do morador não consta neste registro de correspondência.");
       return;
     }
-    const phone = recibo.telefoneMorador.replace(/\D/g, "");
-    const numeroFinal = phone.length <= 11 ? `55${phone}` : phone;
-    const msg = `Olá ${recibo.moradorNome}. \n\nSegue a 2ª via do seu recibo de retirada de correspondência.\n\nProtocolo: ${recibo.protocolo}\nLink: ${linkRecibo}\n\nEnviado por: ${tituloPerfil}`;
-    window.open(`https://wa.me/${numeroFinal}?text=${encodeURIComponent(msg)}`, "_blank");
+    
+    // 2. Limpeza (remove tudo que não é número)
+    let phone = rawPhone.replace(/\D/g, "");
+
+    // 3. Validação pós-limpeza (precisa ter pelo menos 10 dígitos: DDD + Número)
+    if (phone.length < 10) {
+      alert(`Número de telefone inválido ou incompleto: ${rawPhone}`);
+      return;
+    }
+
+    // 4. Remove zero à esquerda (ex: 01199...)
+    if (phone.startsWith("0")) {
+      phone = phone.substring(1);
+    }
+
+    // 5. Adiciona DDI 55 se for um número local (10 ou 11 dígitos)
+    if (phone.length >= 10 && phone.length <= 11) {
+      phone = `55${phone}`;
+    }
+
+    const dataFormatada = getDataFormatada();
+    
+    const msg = `*AVISO DE RETIRADA*
+
+Olá, *${recibo.moradorNome}*!
+Unidade: ${recibo.apartamento} ${recibo.blocoNome ? `(${recibo.blocoNome})` : ''}
+
+Sua correspondência foi entregue
+━━━━━━━━━━━━━━━━
+│ *PROTOCOLO: ${recibo.protocolo}*
+│ Status:  ENTREGUE
+│ Retirado por: ${recibo.quemRetirouNome || 'Não informado'}
+│ Data: ${dataFormatada}
+━━━━━━━━━━━━━━━━
+
+Se você não reconhece esta retirada, entre em contato com a portaria imediatamente.
+
+ Acesse o recibo digital:
+${linkCompartilhamento}`;
+
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, "_blank");
   };
 
   // Lógica E-mail
   const handleEmail = () => {
     const subject = `2ª Via de Recibo - Protocolo ${recibo.protocolo}`;
-    const body = `Olá ${recibo.moradorNome},\n\nSegue o link do seu recibo de retirada: ${linkRecibo}`;
+    const body = `Olá ${recibo.moradorNome},\n\nSegue o link do seu recibo de retirada: ${linkCompartilhamento}`;
     window.location.href = `mailto:${recibo.emailMorador || ''}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   };
 
   // Lógica Imprimir/PDF
   const handleImprimir = () => {
-    if (linkRecibo) window.open(linkRecibo, "_blank");
-    else alert("Link do PDF não disponível.");
+    if (linkArquivo) window.open(linkArquivo, "_blank");
+    else alert("Arquivo PDF não disponível para impressão.");
   };
 
   return (
@@ -178,6 +231,18 @@ export default function HistoricoRetiradas({ voltarUrl, tituloPerfil }: Props) {
       const snapshot = await getDocs(q);
       const lista = snapshot.docs.map((doc) => {
         const data = doc.data();
+
+        // TENTATIVA DE ENCONTRAR O TELEFONE EM MÚLTIPLOS CAMPOS
+        // Isso resolve o problema se o campo tiver nomes diferentes no BD
+        const telefoneEncontrado = 
+          data.moradorWhatsapp || 
+          data.moradorTelefone || 
+          data.whatsapp || 
+          data.telefone || 
+          data.celular || 
+          data.phone ||
+          "";
+
         return {
           id: doc.id,
           protocolo: data.protocolo,
@@ -187,7 +252,8 @@ export default function HistoricoRetiradas({ voltarUrl, tituloPerfil }: Props) {
           dataRetirada: data.retiradoEm,
           status: data.status,
           reciboUrl: data.reciboUrl || data.pdfUrl,
-          telefoneMorador: data.moradorWhatsapp || data.moradorTelefone || "", 
+          // Garante que seja string para evitar erros
+          telefoneMorador: String(telefoneEncontrado), 
           emailMorador: data.moradorEmail || "",
           quemRetirouNome: data.retiradoPorNome || data.moradorNome,
         } as Recibo;
@@ -223,10 +289,8 @@ export default function HistoricoRetiradas({ voltarUrl, tituloPerfil }: Props) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Navbar opcional se não vier do layout global */}
       <Navbar />
 
-      {/* Renderiza o Modal se estiver aberto */}
       <ModalSegundaVia 
         isOpen={modalOpen} 
         onClose={() => setModalOpen(false)} 
@@ -300,7 +364,8 @@ export default function HistoricoRetiradas({ voltarUrl, tituloPerfil }: Props) {
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {filtrados.map((item) => {
-                      const date = item.dataRetirada?.seconds ? new Date(item.dataRetirada.seconds * 1000) : new Date();
+                      const seconds = item.dataRetirada?.seconds;
+                      const date = seconds ? new Date(seconds * 1000) : new Date();
                       const dataFormatada = date.toLocaleString('pt-BR', {
                           day: '2-digit', month: '2-digit', year: '2-digit',
                           hour: '2-digit', minute: '2-digit'
@@ -310,7 +375,7 @@ export default function HistoricoRetiradas({ voltarUrl, tituloPerfil }: Props) {
                         <tr key={item.id} className="hover:bg-green-50 transition-colors duration-150 border-b border-gray-100">
                           <td className="px-6 py-4 text-gray-600 flex items-center gap-2">
                             <Calendar size={16} className="text-gray-400" />
-                            {}
+                            {dataFormatada}
                           </td>
                           <td className="px-6 py-4 font-bold text-[#057321] text-base">
                             #{item.protocolo}
@@ -325,7 +390,6 @@ export default function HistoricoRetiradas({ voltarUrl, tituloPerfil }: Props) {
                             {item.quemRetirouNome}
                           </td>
                           
-                          {/* --- NOVOS BOTÕES (VISUALIZAR E 2ª VIA) --- */}
                           <td className="px-6 py-4">
                             <div className="flex justify-center items-center gap-3">
                               <button
@@ -355,7 +419,8 @@ export default function HistoricoRetiradas({ voltarUrl, tituloPerfil }: Props) {
               {/* Versão Mobile */}
               <div className="md:hidden flex flex-col gap-4 p-4 bg-gray-50">
                 {filtrados.map((item) => {
-                  const date = item.dataRetirada?.seconds ? new Date(item.dataRetirada.seconds * 1000) : new Date();
+                  const seconds = item.dataRetirada?.seconds;
+                  const date = seconds ? new Date(seconds * 1000) : new Date();
                   const dataFormatada = date.toLocaleString('pt-BR', {
                       day: '2-digit', month: '2-digit', year: '2-digit',
                       hour: '2-digit', minute: '2-digit'
@@ -364,10 +429,10 @@ export default function HistoricoRetiradas({ voltarUrl, tituloPerfil }: Props) {
                   return (
                     <div key={item.id} className="bg-white p-4 rounded-xl shadow-md border border-gray-200">
                       <div className="flex justify-between items-center mb-3 border-b border-gray-100 pb-2">
-                         <span className="font-bold text-[#057321] text-lg">#{item.protocolo}</span>
-                         <span className="text-xs text-gray-500 flex items-center gap-1">
-                            <Calendar size={12} /> {}
-                         </span>
+                          <span className="font-bold text-[#057321] text-lg">#{item.protocolo}</span>
+                          <span className="text-xs text-gray-500 flex items-center gap-1">
+                            <Calendar size={12} /> {dataFormatada}
+                          </span>
                       </div>
 
                       <div className="mb-3">
@@ -382,7 +447,6 @@ export default function HistoricoRetiradas({ voltarUrl, tituloPerfil }: Props) {
                         <p className="text-sm text-gray-700">{item.quemRetirouNome}</p>
                       </div>
 
-                      {/* Botões Mobile */}
                       <div className="grid grid-cols-2 gap-2">
                         <button
                           onClick={() => handleVisualizarDireto(item.reciboUrl)}
@@ -409,5 +473,3 @@ export default function HistoricoRetiradas({ voltarUrl, tituloPerfil }: Props) {
     </div>
   );
 }
-
-
