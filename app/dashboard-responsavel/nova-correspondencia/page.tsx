@@ -91,7 +91,7 @@ function NovaCorrespondenciaResponsavelPage() {
   const [selectedBloco, setSelectedBloco] = useState("");
   const [selectedMorador, setSelectedMorador] = useState("");
   const [observacao, setObservacao] = useState("");
-  const [localArmazenamento, setLocalArmazenamento] = useState("Portaria"); // NOVO: Local
+  const [localArmazenamento, setLocalArmazenamento] = useState("Portaria"); 
   const [imagemFile, setImagemFile] = useState<File | null>(null);
 
   // Estados de sucesso/modal
@@ -105,8 +105,6 @@ function NovaCorrespondenciaResponsavelPage() {
   
   const [mensagemFormatada, setMensagemFormatada] = useState("");
   
-  const backgroundTaskRef = useRef<Promise<void> | null>(null);
-
   // Rota de voltar para o responsável
   const backRoute = '/dashboard-responsavel';
   
@@ -179,6 +177,7 @@ function NovaCorrespondenciaResponsavelPage() {
       const nomes = await buscarNomes();
       const novoProtocolo = `${Math.floor(Date.now() / 1000).toString().slice(-6)}`;
       
+      // CRIA A REFERÊNCIA (O ID JÁ EXISTE AQUI)
       const docRef = doc(collection(db, "correspondencias"));
       const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
       const novoLinkPublico = `${baseUrl}/ver/${docRef.id}`;
@@ -202,7 +201,7 @@ function NovaCorrespondenciaResponsavelPage() {
       const nomeUser = user?.nome || "Responsável";
       const responsavelRegistro = `${nomeUser} (Gestão)`;
 
-      setMessage("Criando etiqueta...");
+      setMessage("Gerando etiqueta...");
       const pdfBlob = await gerarEtiquetaPDF({
           protocolo: novoProtocolo,
           condominioNome: nomes.condominioNome,
@@ -219,10 +218,55 @@ function NovaCorrespondenciaResponsavelPage() {
       const localPdfUrl = URL.createObjectURL(pdfBlob);
       setPdfUrl(localPdfUrl);
       setProtocolo(novoProtocolo);
+      setProgress(60);
+
+      // -------------------------------------------------------
+      // UPLOAD E SALVAMENTO (AGORA ESPERAMOS ISSO TERMINAR!)
+      // -------------------------------------------------------
+      setMessage("Salvando no sistema...");
+      
+      let publicPdfUrl = "";
+      let publicFotoUrl = "";
+
+      // 1. Upload PDF
+      const pdfRef = ref(storage, `correspondencias/entrada_${novoProtocolo}_${Date.now()}.pdf`);
+      await uploadBytes(pdfRef, pdfBlob);
+      publicPdfUrl = await getDownloadURL(pdfRef);
+
+      // 2. Upload Foto (Se houver)
+      if (arquivoFinal) {
+          const fotoRef = ref(storage, `correspondencias/foto_${novoProtocolo}_${Date.now()}.jpg`);
+          await uploadBytes(fotoRef, arquivoFinal);
+          publicFotoUrl = await getDownloadURL(fotoRef);
+      }
+
+      // 3. Salvar no Banco de Dados (USANDO O ID CORRETO)
+      await setDoc(docRef, {
+          condominioId: efetivoCondominioId,
+          blocoId: selectedBloco,
+          blocoNome: nomes.blocoNome,
+          moradorId: selectedMorador,
+          moradorNome: nomes.moradorNome,
+          apartamento: nomes.apartamento,
+          protocolo: novoProtocolo,
+          observacao,
+          localArmazenamento, 
+          status: "pendente", 
+          criadoEm: Timestamp.now(),
+          criadoPor: user?.email || "responsavel",
+          criadoPorNome: nomeUser, 
+          criadoPorCargo: "Responsável",
+          imagemUrl: publicFotoUrl,
+          pdfUrl: publicPdfUrl,
+          moradorTelefone: telefoneMorador,
+          moradorEmail: emailMorador
+      });
+
+      console.log("✅ Correspondência salva com sucesso! ID:", docRef.id);
       setProgress(100);
 
       // -------------------------------------------------------
-      // GERAÇÃO DA MENSAGEM DINÂMICA
+      // GERAÇÃO DA MENSAGEM (Só depois de salvar tudo)
       // -------------------------------------------------------
       const dataAtual = new Date();
       const dataFormatada = dataAtual.toLocaleDateString('pt-BR');
@@ -241,62 +285,19 @@ function NovaCorrespondenciaResponsavelPage() {
 
       const msgBase = await getFormattedMessage('ARRIVAL', variaveis);
       setMensagemFormatada(`${msgBase}\n${novoLinkPublico}`);
-      // -------------------------------------------------------
 
+      // SÓ AGORA LIBERAMOS O MODAL
       setLoading(false);
       setShowSuccessModal(true);
-
-      backgroundTaskRef.current = (async () => {
-          try {
-              const pdfRef = ref(storage, `correspondencias/entrada_${novoProtocolo}_${Date.now()}.pdf`);
-              await uploadBytes(pdfRef, pdfBlob);
-              const publicPdfUrl = await getDownloadURL(pdfRef);
-              
-              let publicFotoUrl = "";
-              if (arquivoFinal) {
-                  const fotoRef = ref(storage, `correspondencias/foto_${novoProtocolo}_${Date.now()}.jpg`);
-                  await uploadBytes(fotoRef, arquivoFinal);
-                  publicFotoUrl = await getDownloadURL(fotoRef);
-              }
-
-              await setDoc(docRef, {
-                  condominioId: efetivoCondominioId,
-                  blocoId: selectedBloco,
-                  blocoNome: nomes.blocoNome,
-                  moradorId: selectedMorador,
-                  moradorNome: nomes.moradorNome,
-                  apartamento: nomes.apartamento,
-                  protocolo: novoProtocolo,
-                  observacao,
-                  localArmazenamento, 
-                  status: "pendente", 
-                  criadoEm: Timestamp.now(),
-                  criadoPor: user?.email || "responsavel",
-                  criadoPorNome: nomeUser, 
-                  criadoPorCargo: "Responsável",
-                  imagemUrl: publicFotoUrl,
-                  pdfUrl: publicPdfUrl,
-                  moradorTelefone: telefoneMorador,
-                  moradorEmail: emailMorador
-              });
-
-              console.log("✅ [Background] Correspondência salva com sucesso! ID:", docRef.id);
-
-          } catch (err) {
-              console.error("❌ [Background] Erro crítico ao salvar:", err);
-          }
-      })();
 
     } catch (err) {
       console.error(err);
       setLoading(false);
-      alert("Ocorreu um erro ao processar. Verifique sua conexão e tente novamente.");
+      alert("Ocorreu um erro ao processar. Tente novamente.");
     }
   };
 
-  const handleCloseSuccess = async () => {
-      if (backgroundTaskRef.current) await backgroundTaskRef.current;
-      
+  const handleCloseSuccess = () => {
       setObservacao("");
       setImagemFile(null);
       setPdfUrl("");
@@ -379,7 +380,7 @@ function NovaCorrespondenciaResponsavelPage() {
 
             <div>
               <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
-                <MapPin size={18} className="text-[#057321]" /> Local de Armazenamento
+                <MapPin size={18} className="text-[#057321]" /> Local de Retirada
               </label>
               <select
                 value={localArmazenamento}
