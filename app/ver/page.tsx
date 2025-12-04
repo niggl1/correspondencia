@@ -1,287 +1,238 @@
-"use client";
+import { jsPDF } from "jspdf";
+import QRCode from "qrcode";
 
-import { useEffect, useState, Suspense } from "react";
-import { useSearchParams, usePathname } from "next/navigation";
-import { db } from "@/app/lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
-import Image from "next/image";
-import { 
-  User, Home, CheckCircle, Clock, FileText, AlertTriangle, Zap, Package, Calendar 
-} from "lucide-react";
-import { Browser } from '@capacitor/browser';
-
-// Função auxiliar para formatar datas do Firebase ou Strings
-const formatarData = (data: any) => {
-  if (!data) return "N/A";
-  
-  // Se for Timestamp do Firebase (tem .seconds)
-  if (data.seconds) {
-    return new Date(data.seconds * 1000).toLocaleString('pt-BR');
-  }
-  
-  // Se for string ou objeto Date
-  try {
-    return new Date(data).toLocaleString('pt-BR');
-  } catch (e) {
-    return data.toString();
-  }
-};
-
-interface Dados {
-  id: string;
-  tipo: "correspondencia" | "aviso"; 
+interface DadosEtiqueta {
   protocolo: string;
+  condominioNome: string;
   moradorNome: string;
-  blocoNome: string;
+  bloco: string;
   apartamento: string;
-  status: string;
-  
-  // Campos adicionados para resolver o "N/A"
-  remetente?: string;
-  entregador?: string;
-  categoria?: string;
-  porteiroNome?: string;
-  cpfRetirada?: string;
-  
-  dataChegadaFormatada: string;
-  dataRetiradaFormatada?: string;
-  
-  retiradoPorNome?: string;
-  fotoUrl?: string;   
-  imagemUrl?: string; 
-  reciboUrl?: string; 
-  mensagem?: string;
+  dataChegada: string;
+  recebidoPor?: string;
+  observacao?: string;
+  fotoUrl?: string; 
+  logoUrl?: string; 
 }
 
-function ConteudoComprovante() {
-  const searchParams = useSearchParams();
-  const pathname = usePathname();
-  
-  const [dados, setDados] = useState<Dados | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [erro, setErro] = useState("");
+// --- OTIMIZAÇÃO DE IMAGEM INTELIGENTE ---
+const IMAGE_TIMEOUT_MS = 4000;
 
-  useEffect(() => {
-    const carregarDados = async () => {
-      let idParaBuscar = searchParams.get("id");
+// Agora a função aceita um parâmetro "isLogo"
+async function fetchAndCompressImage(url: string, isLogo: boolean = false): Promise<string> {
+  if (!url) return "";
+  if (url.startsWith("data:")) return url;
 
-      if (!idParaBuscar) {
-        const partes = pathname.split('/');
-        const possivelId = partes[partes.length - 1];
-        if (possivelId && possivelId !== 'ver') {
-          idParaBuscar = possivelId;
-        }
+  const processPromise = new Promise<string>(async (resolve) => {
+    try {
+      const response = await fetch(url, { mode: 'cors' });
+      if (!response.ok) { resolve(""); return; }
+      const blob = await response.blob();
+      const img = await createImageBitmap(blob);
+      
+      // Logo pode ser menor (150px), Foto precisa ser maior (250px)
+      const MAX_WIDTH = isLogo ? 150 : 250; 
+      let width = img.width;
+      let height = img.height;
+
+      if (width > MAX_WIDTH) {
+        height = height * (MAX_WIDTH / width);
+        width = MAX_WIDTH;
       }
 
-      if (!idParaBuscar) {
-        setLoading(false);
-        setErro("ID não identificado.");
-        return;
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { resolve(""); return; }
+
+      // SE NÃO FOR LOGO (FOTO DA ENCOMENDA), PINTA O FUNDO DE BRANCO (JPEG NÃO TEM TRANSPARÊNCIA)
+      if (!isLogo) {
+          ctx.fillStyle = "#FFFFFF"; 
+          ctx.fillRect(0, 0, width, height);
+      } else {
+          // SE FOR LOGO, LIMPA O CANVAS PARA MANTER TRANSPARÊNCIA
+          ctx.clearRect(0, 0, width, height);
       }
 
-      try {
-        // 1. Tenta buscar na coleção de CORRESPONDÊNCIAS
-        let docRef = doc(db, "correspondencias", idParaBuscar);
-        let docSnap = await getDoc(docRef);
-        let tipoRegistro: "correspondencia" | "aviso" = "correspondencia";
-
-        // 2. Se não achar, tenta buscar na coleção de AVISOS RAPIDOS
-        if (!docSnap.exists()) {
-          docRef = doc(db, "avisos_rapidos", idParaBuscar);
-          docSnap = await getDoc(docRef);
-          tipoRegistro = "aviso";
-        }
-
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          
-          // Mapeamento manual para garantir que os campos apareçam
-          setDados({ 
-              id: docSnap.id, 
-              tipo: tipoRegistro,
-              protocolo: data.protocolo || 'S/N',
-              status: data.status || 'pendente',
-              
-              moradorNome: data.moradorNome || data.nomeMorador || "Morador",
-              blocoNome: data.blocoNome || data.bloco || "",
-              apartamento: data.apartamento || data.unidade || "",
-              
-              // Busca remetente ou entregador (nomes comuns no banco)
-              remetente: data.remetente || data.entregador || "Não informado",
-              categoria: data.tipo || data.categoria || "Encomenda",
-              
-              // Formata as datas aqui para não quebrar o React
-              dataChegadaFormatada: formatarData(data.dataChegada || data.criadoEm),
-              dataRetiradaFormatada: data.retiradoEm ? formatarData(data.retiradoEm) : undefined,
-              
-              retiradoPorNome: data.retiradoPorNome || data.nomeRetirada,
-              cpfRetirada: data.cpfRetirada || data.documentoRetirada,
-              porteiroNome: data.porteiroNome || data.responsavelNome,
-              
-              fotoUrl: data.fotoUrl,
-              imagemUrl: data.imagemUrl,
-              reciboUrl: data.reciboUrl,
-              mensagem: data.mensagem
-          } as Dados);
-        } else {
-          setErro("Registro não encontrado ou link expirado.");
-        }
-      } catch (err) {
-        console.error(err);
-        setErro("Erro ao carregar as informações.");
-      } finally {
-        setLoading(false);
+      ctx.drawImage(img, 0, 0, width, height);
+      
+      if (isLogo) {
+          // Logo retorna como PNG (Mantém transparência)
+          resolve(canvas.toDataURL('image/png'));
+      } else {
+          // Foto retorna como JPEG (Comprime mais, fundo branco)
+          resolve(canvas.toDataURL('image/jpeg', 0.5)); 
       }
-    };
 
-    carregarDados();
-  }, [searchParams, pathname]);
-
-  const abrirRecibo = async () => {
-    if (dados?.reciboUrl) {
-      await Browser.open({ url: dados.reciboUrl });
+    } catch (error) {
+      resolve("");
     }
+  });
+
+  const timeoutPromise = new Promise<string>((resolve) => {
+    setTimeout(() => resolve(""), IMAGE_TIMEOUT_MS);
+  });
+
+  return Promise.race([processPromise, timeoutPromise]);
+}
+
+export async function gerarEtiquetaPDF(dados: DadosEtiqueta): Promise<Blob> {
+  const doc = new jsPDF({ compress: true });
+  
+  const pageWidth = doc.internal.pageSize.getWidth(); 
+  const margin = 15;
+  const contentWidth = pageWidth - (margin * 2);
+  const verdeOficial = "#057321"; 
+
+  // QR Code Leve
+  const qrOptions = { width: 150, margin: 0, errorCorrectionLevel: 'L' as const };
+  const qrString = JSON.stringify({ p: dados.protocolo, d: dados.dataChegada });
+
+  // Carregar imagens (Note o "true" para a logo)
+  const [logoBase64, fotoBase64, qrCodeUrl] = await Promise.all([
+      dados.logoUrl ? fetchAndCompressImage(dados.logoUrl, true) : Promise.resolve(""), // TRUE = É LOGO (PNG)
+      dados.fotoUrl ? fetchAndCompressImage(dados.fotoUrl, false) : Promise.resolve(""), // FALSE = É FOTO (JPEG)
+      QRCode.toDataURL(qrString, qrOptions)
+  ]);
+
+  // ==========================================
+  // 1. CABEÇALHO VERDE
+  // ==========================================
+  doc.setFillColor(verdeOficial);
+  doc.rect(0, 0, pageWidth, 35, "F"); 
+
+  // ADICIONA A LOGO COMO PNG (TRANSPARENTE)
+  if (logoBase64) {
+      // margin, y, width, height
+      doc.addImage(logoBase64, "PNG", margin, 5, 25, 25); 
+  }
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(16);
+  doc.setFont("helvetica", "bold");
+  doc.text(dados.condominioNome.substring(0, 25), margin + 35, 12);
+
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.text("Gestão de Encomendas", margin + 35, 18);
+
+  doc.setFont("helvetica", "bold");
+  doc.text(`Resp: ${dados.recebidoPor || "Sistema"}`, margin + 35, 24);
+
+  doc.setFont("helvetica", "normal");
+  const dataFormatada = new Date(dados.dataChegada).toLocaleString("pt-BR");
+  doc.text(`Data: ${dataFormatada}`, margin + 35, 30);
+
+  let y = 50;
+
+  // ==========================================
+  // 2. TÍTULO
+  // ==========================================
+  doc.setTextColor(40, 60, 80); 
+  doc.setFontSize(18);
+  doc.setFont("helvetica", "bold");
+  doc.text("AVISO DE CHEGADA", pageWidth / 2, y, { align: "center" });
+  
+  y += 15;
+
+  const drawSection = (title: string, height: number) => {
+    doc.setFillColor(verdeOficial);
+    doc.roundedRect(margin, y, contentWidth, 8, 1, 1, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.text(title, margin + 5, y + 5.5);
+    
+    doc.setDrawColor(verdeOficial);
+    doc.setLineWidth(0.2); 
+    doc.roundedRect(margin, y, contentWidth, height + 8, 1, 1, "S"); 
+    return y + 12; 
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-[#057321]"></div>
-        <p className="mt-4 text-gray-500 font-medium">Localizando registro...</p>
-      </div>
-    );
+  // ==========================================
+  // 3. DESTINATÁRIO
+  // ==========================================
+  let contentY = drawSection("DESTINATÁRIO", 32);
+  
+  doc.setTextColor(0, 0, 0);
+  doc.setFontSize(10);
+  const gap = 7;
+
+  doc.setFont("helvetica", "bold"); doc.text("Morador:", margin + 5, contentY);
+  doc.setFont("helvetica", "normal"); doc.text(dados.moradorNome, margin + 25, contentY);
+
+  contentY += gap;
+  doc.setFont("helvetica", "bold"); doc.text("Unidade:", margin + 5, contentY);
+  doc.setFont("helvetica", "normal"); doc.text(`${dados.bloco} - ${dados.apartamento}`, margin + 25, contentY);
+
+  contentY += gap;
+  doc.setFont("helvetica", "bold"); doc.text("Protocolo:", margin + 5, contentY);
+  doc.setFontSize(12); 
+  doc.text(`#${dados.protocolo}`, margin + 25, contentY);
+
+  y += 50; 
+
+  // ==========================================
+  // 4. OBSERVAÇÕES
+  // ==========================================
+  contentY = drawSection("OBSERVAÇÕES", 22);
+  doc.setFontSize(10);
+  doc.setTextColor(0, 0, 0);
+  doc.setFont("helvetica", "normal");
+  
+  const obsTexto = dados.observacao || "-";
+  const obsLines = doc.splitTextToSize(obsTexto, contentWidth - 10);
+  doc.text(obsLines, margin + 5, contentY);
+
+  y += 40; 
+
+  // ==========================================
+  // 5. FOTO E QR CODE
+  // ==========================================
+  if (y + 80 > doc.internal.pageSize.getHeight()) { doc.addPage(); y = 20; }
+
+  contentY = drawSection("VISUAL E RETIRADA", 80);
+  
+  const colWidth = contentWidth / 2;
+  const centerX1 = margin + (colWidth / 2);
+  const centerX2 = margin + colWidth + (colWidth / 2);
+
+  // FOTO
+  if (fotoBase64) {
+      try {
+          const imgProps = doc.getImageProperties(fotoBase64);
+          const maxW = colWidth - 6;
+          const maxH = 65;
+          const ratio = Math.min(maxW / imgProps.width, maxH / imgProps.height);
+          // Usa JPEG para a foto (Mais leve)
+          doc.addImage(fotoBase64, "JPEG", centerX1 - ((imgProps.width * ratio)/2), contentY, imgProps.width * ratio, imgProps.height * ratio);
+      } catch (e) { }
+  } else {
+      doc.setFontSize(8);
+      doc.setTextColor(150, 150, 150);
+      doc.text("Sem foto", centerX1, contentY + 30, { align: "center" });
   }
 
-  if (erro || !dados) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
-        <div className="bg-white p-8 rounded-2xl shadow-lg text-center max-w-md w-full">
-          <div className="bg-red-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-            <AlertTriangle size={32} className="text-red-600" />
-          </div>
-          <h1 className="text-xl font-bold text-gray-900 mb-2">Atenção</h1>
-          <p className="text-gray-600">{erro}</p>
-        </div>
-      </div>
-    );
-  }
+  // QR CODE
+  try {
+      const qrSize = 45;
+      doc.addImage(qrCodeUrl, "PNG", centerX2 - (qrSize/2), contentY + 5, qrSize, qrSize);
+      doc.setFontSize(8);
+      doc.setTextColor(50, 50, 50);
+      doc.text("Apresente este código", centerX2, contentY + qrSize + 8, { align: "center" });
+  } catch (e) { }
 
-  const isRetirado = dados.status === "retirada" || dados.status === "entregue";
-  const isAviso = dados.tipo === "aviso";
+  // ==========================================
+  // RODAPÉ
+  // ==========================================
+  const pageH = doc.internal.pageSize.getHeight();
+  doc.setFillColor(verdeOficial);
+  doc.rect(0, pageH - 15, pageWidth, 15, "F");
 
-  return (
-    <div className="min-h-screen bg-gray-100 py-8 px-4 flex justify-center items-center">
-      <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-gray-200">
-        
-        {/* CABEÇALHO */}
-        <div className={`p-8 text-center relative overflow-hidden ${
-            isRetirado ? 'bg-[#057321]' : isAviso ? 'bg-blue-600' : 'bg-yellow-500'
-        }`}>
-          <div className="relative z-10">
-            <div className="bg-white/20 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 backdrop-blur-sm shadow-inner">
-              {isRetirado ? <CheckCircle size={40} className="text-white" /> : 
-               isAviso ? <Zap size={40} className="text-white" /> : 
-               <Clock size={40} className="text-white" />}
-            </div>
-            
-            <h1 className="text-2xl font-black text-white tracking-tight">
-              {isRetirado ? "ENTREGA CONCLUÍDA" : isAviso ? "AVISO IMPORTANTE" : "AGUARDANDO RETIRADA"}
-            </h1>
-            
-            <div className="mt-2 inline-block bg-black/20 px-3 py-1 rounded-lg">
-              <p className="text-white font-mono text-sm tracking-wider">PROTOCOLO: {dados.protocolo}</p>
-            </div>
-          </div>
-        </div>
+  doc.setFontSize(7);
+  doc.setTextColor(255, 255, 255); 
+  doc.text("Gerado via App Correspondência", pageWidth / 2, pageH - 6, { align: "center" });
 
-        {/* CONTEÚDO PRINCIPAL */}
-        <div className="p-6 space-y-6">
-          
-          {/* CARD DESTINATÁRIO */}
-          <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 flex items-start gap-4">
-            <div className="bg-white p-2.5 rounded-full shadow-sm text-gray-600"><User size={24} /></div>
-            <div>
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-wide">Destinatário</p>
-                <p className="font-bold text-gray-900 text-lg leading-tight">{dados.moradorNome}</p>
-                <div className="flex items-center gap-1 text-sm text-gray-600 mt-1">
-                    <Home size={14} /> 
-                    <span>{dados.blocoNome} - Apto {dados.apartamento}</span>
-                </div>
-            </div>
-          </div>
-
-          {/* DETALHES DA ENCOMENDA (NOVO) */}
-          {!isAviso && (
-            <div className="grid grid-cols-2 gap-3">
-                <div className="bg-gray-50 p-3 rounded-lg border border-gray-100">
-                    <p className="text-xs text-gray-500 mb-1 flex items-center gap-1"><Package size={12}/> Remetente</p>
-                    <p className="font-semibold text-gray-800 text-sm truncate">{dados.remetente}</p>
-                </div>
-                <div className="bg-gray-50 p-3 rounded-lg border border-gray-100">
-                    <p className="text-xs text-gray-500 mb-1 flex items-center gap-1"><Calendar size={12}/> Chegada</p>
-                    <p className="font-semibold text-gray-800 text-sm">{dados.dataChegadaFormatada}</p>
-                </div>
-            </div>
-          )}
-
-          {/* MENSAGEM DO AVISO */}
-          {dados.mensagem && (
-              <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 text-blue-900 text-sm">
-                  <p className="font-bold mb-1 flex items-center gap-2"><Zap size={16}/> Mensagem:</p>
-                  {dados.mensagem}
-              </div>
-          )}
-
-          {/* FOTO DA ENCOMENDA */}
-          {(dados.fotoUrl || dados.imagemUrl) && (
-            <div className="mt-4">
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">Registro Visual</p>
-                <div className="relative h-56 w-full rounded-2xl overflow-hidden border-2 border-gray-100 shadow-sm bg-gray-100 group">
-                    <Image 
-                        src={dados.fotoUrl || dados.imagemUrl || ""} 
-                        alt="Foto" 
-                        fill 
-                        className="object-contain group-hover:scale-105 transition-transform duration-500" 
-                    />
-                </div>
-            </div>
-          )}
-
-          {/* DADOS DA RETIRADA (SE JÁ RETIROU) */}
-          {isRetirado && (
-             <div className="bg-green-50 p-4 rounded-xl border border-green-100 space-y-2">
-                <p className="text-green-800 font-bold text-sm flex items-center gap-2">
-                    <CheckCircle size={16}/> Dados da Retirada
-                </p>
-                <div className="text-sm text-green-900 space-y-1">
-                    <p><span className="font-semibold">Retirado por:</span> {dados.retiradoPorNome || "Não informado"}</p>
-                    {dados.cpfRetirada && <p><span className="font-semibold">Documento:</span> {dados.cpfRetirada}</p>}
-                    <p><span className="font-semibold">Data:</span> {dados.dataRetiradaFormatada}</p>
-                    {dados.porteiroNome && <p><span className="font-semibold">Liberado por:</span> {dados.porteiroNome}</p>}
-                </div>
-             </div>
-          )}
-
-          {/* BOTÃO DE PDF */}
-          {isRetirado && dados.reciboUrl && (
-              <button 
-                onClick={abrirRecibo} 
-                className="flex items-center justify-center gap-2 w-full py-4 bg-gray-900 text-white rounded-xl font-bold shadow-lg hover:bg-black transition-all mt-4 active:scale-95"
-              >
-                <FileText size={20} /> 
-                Baixar Recibo Oficial (PDF)
-              </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
+  return doc.output("blob");
 }
 
-export default function VerComprovantePage() {
-  return (
-    <Suspense fallback={<div className="p-10 text-center">Carregando...</div>}>
-      <ConteudoComprovante />
-    </Suspense>
-  );
-}

@@ -12,7 +12,8 @@ import { doc, getDoc, collection, setDoc, Timestamp } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import Navbar from "@/components/Navbar";
 import withAuth from "@/components/withAuth";
-import { Package, FileText, CheckCircle, Loader2, Building2, Camera } from "lucide-react"; 
+// Adicionei MapPin nas importações
+import { Package, FileText, CheckCircle, Loader2, Building2, Camera, MapPin } from "lucide-react"; 
 import { gerarEtiquetaPDF } from "@/utils/gerarEtiquetaPDF"; 
 import BotaoVoltar from "@/components/BotaoVoltar";
 
@@ -84,6 +85,10 @@ function NovaCorrespondenciaPorteiroPage() {
   const [selectedBloco, setSelectedBloco] = useState("");
   const [selectedMorador, setSelectedMorador] = useState("");
   const [observacao, setObservacao] = useState("");
+  
+  // --- NOVO ESTADO: LOCAL DE ARMAZENAMENTO ---
+  const [localArmazenamento, setLocalArmazenamento] = useState("Portaria");
+
   const [imagemFile, setImagemFile] = useState<File | null>(null);
 
   // Estados de sucesso/modal
@@ -212,6 +217,7 @@ function NovaCorrespondenciaPorteiroPage() {
           dataChegada: new Date().toISOString(),
           recebidoPor: responsavelRegistro,
           observacao,
+          localRetirada: localArmazenamento, // Adicionado ao PDF
           fotoUrl: fotoBase64ParaPDF,
           logoUrl: "/logo-app-correspondencia.png"
       });
@@ -222,7 +228,7 @@ function NovaCorrespondenciaPorteiroPage() {
       setProgress(100);
 
       // -------------------------------------------------------
-      // NOVO: GERAÇÃO DA MENSAGEM FORMATADA (AQUI ESTÁ A MUDANÇA)
+      // NOVO: GERAÇÃO DA MENSAGEM FORMATADA COM O LOCAL CORRETO
       // -------------------------------------------------------
       const dataAtual = new Date();
       const dataFormatada = dataAtual.toLocaleDateString('pt-BR');
@@ -236,7 +242,7 @@ Unidade: ${nomes.apartamento} (${nomes.blocoNome})
 Você recebeu uma correspondência
 ━━━━━━━━━━━━━━━━
 │ PROTOCOLO: ${novoProtocolo}
-│ Local: Portaria
+│ Local: ${localArmazenamento}
 │ Recebido por: ${nomeUser}
 │ Chegada: ${dataFormatada}, ${horaFormatada}
 ━━━━━━━━━━━━━━━━
@@ -280,6 +286,7 @@ Aguardamos a sua retirada`;
                   apartamento: nomes.apartamento,
                   protocolo: novoProtocolo,
                   observacao,
+                  localArmazenamento, // Salva no banco
                   status: "pendente", 
                   criadoEm: Timestamp.now(),
                   criadoPor: user?.email || "porteiro",
@@ -379,6 +386,24 @@ Aguardamos a sua retirada`;
               />
             </div>
 
+            {/* --- NOVO CAMPO: LOCAL DE RETIRADA --- */}
+            <div>
+              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
+                <MapPin size={18} className="text-[#057321]" /> Local de Retirada
+              </label>
+              <select
+                value={localArmazenamento}
+                onChange={(e) => setLocalArmazenamento(e.target.value)}
+                className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 focus:border-[#057321] focus:ring-4 focus:ring-[#057321]/10 outline-none transition-all bg-white text-gray-800 font-medium cursor-pointer"
+              >
+                <option value="Portaria">Portaria</option>
+                <option value="Administração">Administração</option>
+                <option value="Sala de Correspondência">Sala de Correspondência</option>
+                <option value="Recepção">Recepção</option>
+                <option value="Smart Lockers">Smart Lockers</option>
+              </select>
+            </div>
+
             {/* Observações */}
             <div>
               <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
@@ -423,5 +448,3 @@ Aguardamos a sua retirada`;
 }
 
 export default withAuth(NovaCorrespondenciaPorteiroPage, ['porteiro', 'responsavel', 'adminMaster']);
-
-

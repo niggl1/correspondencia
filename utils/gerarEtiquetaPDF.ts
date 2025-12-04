@@ -1,6 +1,7 @@
 import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
 
+// --- AQUI ESTAVA O ERRO: Adicionei o campo 'localRetirada' na interface ---
 interface DadosEtiqueta {
   protocolo: string;
   condominioNome: string;
@@ -11,75 +12,65 @@ interface DadosEtiqueta {
   recebidoPor?: string;
   observacao?: string;
   fotoUrl?: string; 
-  logoUrl?: string; 
+  logoUrl?: string;
+  localRetirada?: string; // <--- NOVO CAMPO OBRIGATÓRIO
 }
 
-// --- OTIMIZAÇÃO AGRESSIVA DE IMAGEM ---
-const IMAGE_TIMEOUT_MS = 4000; // 4 segundos max
-
-async function fetchAndCompressImage(url: string): Promise<string> {
+// --- FUNÇÃO DE IMAGEM (BLINDADA) ---
+async function processarImagem(url: string, isLogo: boolean): Promise<string> {
   if (!url) return "";
-  if (url.startsWith("data:")) return url;
 
-  const processPromise = new Promise<string>(async (resolve) => {
-    try {
-      const response = await fetch(url, { mode: 'cors' });
-      if (!response.ok) { resolve(""); return; }
-      const blob = await response.blob();
-      const img = await createImageBitmap(blob);
-      
-      // LARGURA MÁXIMA 250px (Suficiente para A4 e Celular)
-      const MAX_WIDTH = 250; 
-      let width = img.width;
-      let height = img.height;
+  try {
+    const response = await fetch(url, { mode: 'cors' });
+    if (!response.ok) return "";
+    
+    const blob = await response.blob();
+    const imgBitmap = await createImageBitmap(blob);
 
-      if (width > MAX_WIDTH) {
-        height = height * (MAX_WIDTH / width);
-        width = MAX_WIDTH;
-      }
+    const MAX_WIDTH = isLogo ? 150 : 400; 
+    let width = imgBitmap.width;
+    let height = imgBitmap.height;
 
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) { resolve(""); return; }
-
-      ctx.fillStyle = "#FFFFFF"; 
-      ctx.fillRect(0, 0, width, height);
-      ctx.drawImage(img, 0, 0, width, height);
-      
-      // QUALIDADE 0.4 (40%) -> Arquivo minúsculo
-      resolve(canvas.toDataURL('image/jpeg', 0.4)); 
-    } catch (error) {
-      resolve("");
+    if (width > MAX_WIDTH) {
+      height = height * (MAX_WIDTH / width);
+      width = MAX_WIDTH;
     }
-  });
 
-  const timeoutPromise = new Promise<string>((resolve) => {
-    setTimeout(() => resolve(""), IMAGE_TIMEOUT_MS);
-  });
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return "";
 
-  return Promise.race([processPromise, timeoutPromise]);
+    if (isLogo) {
+        ctx.clearRect(0, 0, width, height);
+        ctx.drawImage(imgBitmap, 0, 0, width, height);
+        return canvas.toDataURL('image/png'); 
+    } else {
+        ctx.fillStyle = "#FFFFFF";
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(imgBitmap, 0, 0, width, height);
+        return canvas.toDataURL('image/jpeg', 0.7); 
+    }
+  } catch (e) {
+    console.error("Erro img:", e);
+    return ""; 
+  }
 }
 
 export async function gerarEtiquetaPDF(dados: DadosEtiqueta): Promise<Blob> {
-  // compress: true ATIVADO PARA REDUZIR TEXTO
   const doc = new jsPDF({ compress: true });
-  
   const pageWidth = doc.internal.pageSize.getWidth(); 
   const margin = 15;
   const contentWidth = pageWidth - (margin * 2);
   const verdeOficial = "#057321"; 
 
-  // Gera QR Code mais simples e leve (Level L = Low Error Correction, menos dados)
-  const qrOptions = { width: 150, margin: 0, errorCorrectionLevel: 'L' as const };
   const qrString = JSON.stringify({ p: dados.protocolo, d: dados.dataChegada });
-
-  // Carregar tudo em paralelo
+  
   const [logoBase64, fotoBase64, qrCodeUrl] = await Promise.all([
-      dados.logoUrl ? fetchAndCompressImage(dados.logoUrl) : Promise.resolve(""),
-      dados.fotoUrl ? fetchAndCompressImage(dados.fotoUrl) : Promise.resolve(""),
-      QRCode.toDataURL(qrString, qrOptions)
+      processarImagem(dados.logoUrl || "", true),
+      processarImagem(dados.fotoUrl || "", false),
+      QRCode.toDataURL(qrString, { width: 200, margin: 1 })
   ]);
 
   // ==========================================
@@ -88,16 +79,29 @@ export async function gerarEtiquetaPDF(dados: DadosEtiqueta): Promise<Blob> {
   doc.setFillColor(verdeOficial);
   doc.rect(0, 0, pageWidth, 35, "F"); 
 
-  if (logoBase64) doc.addImage(logoBase64, "JPEG", margin, 5, 25, 25);
+  if (logoBase64) {
+    try {
+      const logoSize = 24;
+      const logoX = margin;
+      const logoY = 5.5;
+      doc.saveGraphicsState();
+      doc.circle(logoX + (logoSize/2), logoY + (logoSize/2), logoSize/2, "W");
+      doc.clip();
+      doc.addImage(logoBase64, "PNG", logoX, logoY, logoSize, logoSize);
+      doc.restoreGraphicsState();
+    } catch (e) {
+      doc.addImage(logoBase64, "PNG", margin, 5.5, 24, 24);
+    }
+  }
 
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(16);
   doc.setFont("helvetica", "bold");
-  doc.text(dados.condominioNome.substring(0, 25), margin + 35, 12); // Limita tamanho nome
+  doc.text(dados.condominioNome.substring(0, 25), margin + 35, 12);
 
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
-  doc.text("Gestão de Encomendas", margin + 35, 18);
+  doc.text("Sistema de Gestão de Encomendas", margin + 35, 18);
 
   doc.setFont("helvetica", "bold");
   doc.text(`Resp: ${dados.recebidoPor || "Sistema"}`, margin + 35, 24);
@@ -121,14 +125,16 @@ export async function gerarEtiquetaPDF(dados: DadosEtiqueta): Promise<Blob> {
   const drawSection = (title: string, height: number) => {
     doc.setFillColor(verdeOficial);
     doc.roundedRect(margin, y, contentWidth, 8, 1, 1, "F");
+    
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(10);
     doc.setFont("helvetica", "bold");
     doc.text(title, margin + 5, y + 5.5);
-    
+
     doc.setDrawColor(verdeOficial);
-    doc.setLineWidth(0.2); // Linha mais fina economiza bytes no render
+    doc.setLineWidth(0.2);
     doc.roundedRect(margin, y, contentWidth, height + 8, 1, 1, "S"); 
+    
     return y + 12; 
   };
 
@@ -138,7 +144,7 @@ export async function gerarEtiquetaPDF(dados: DadosEtiqueta): Promise<Blob> {
   let contentY = drawSection("DESTINATÁRIO", 32);
   
   doc.setTextColor(0, 0, 0);
-  doc.setFontSize(10); // Fonte 10 é ótima para A4/Celular
+  doc.setFontSize(10);
   const gap = 7;
 
   doc.setFont("helvetica", "bold"); doc.text("Morador:", margin + 5, contentY);
@@ -150,30 +156,44 @@ export async function gerarEtiquetaPDF(dados: DadosEtiqueta): Promise<Blob> {
 
   contentY += gap;
   doc.setFont("helvetica", "bold"); doc.text("Protocolo:", margin + 5, contentY);
-  doc.setFontSize(12); 
-  doc.text(`#${dados.protocolo}`, margin + 25, contentY);
+  doc.setFontSize(12); doc.text(`#${dados.protocolo}`, margin + 25, contentY);
 
   y += 50; 
 
   // ==========================================
-  // 4. OBSERVAÇÕES
+  // 4. LOCAL DE RETIRADA (NOVA SEÇÃO)
+  // ==========================================
+  contentY = drawSection("LOCAL DE RETIRADA", 14);
+  
+  doc.setTextColor(0, 0, 0);
+  doc.setFontSize(12); 
+  doc.setFont("helvetica", "bold");
+  
+  const local = dados.localRetirada || "Portaria";
+  doc.text(local.toUpperCase(), margin + 5, contentY + 2);
+
+  y += 30;
+
+  // ==========================================
+  // 5. OBSERVAÇÕES
   // ==========================================
   contentY = drawSection("OBSERVAÇÕES", 22);
   doc.setFontSize(10);
-  doc.setTextColor(0, 0, 0);
   doc.setFont("helvetica", "normal");
   
   const obsTexto = dados.observacao || "-";
-  // Split text otimizado
   const obsLines = doc.splitTextToSize(obsTexto, contentWidth - 10);
   doc.text(obsLines, margin + 5, contentY);
 
   y += 40; 
 
   // ==========================================
-  // 5. FOTO E QR CODE
+  // 6. FOTO E QR CODE
   // ==========================================
-  if (y + 80 > doc.internal.pageSize.getHeight()) { doc.addPage(); y = 20; }
+  if (y + 80 > doc.internal.pageSize.getHeight()) {
+      doc.addPage();
+      y = 20;
+  }
 
   contentY = drawSection("VISUAL E RETIRADA", 80);
   
@@ -181,7 +201,7 @@ export async function gerarEtiquetaPDF(dados: DadosEtiqueta): Promise<Blob> {
   const centerX1 = margin + (colWidth / 2);
   const centerX2 = margin + colWidth + (colWidth / 2);
 
-  // FOTO (Comprimida)
+  // FOTO
   if (fotoBase64) {
       try {
           const imgProps = doc.getImageProperties(fotoBase64);
@@ -218,4 +238,3 @@ export async function gerarEtiquetaPDF(dados: DadosEtiqueta): Promise<Blob> {
 
   return doc.output("blob");
 }
-
