@@ -149,62 +149,69 @@ function DashboardResponsavel() {
         
         {/* Seletor de Layout e Stats */}
         <div className="flex flex-col xl:flex-row items-center justify-between gap-4 mb-6 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-            <div className="text-center sm:text-left">
+            <div className="text-center sm:text-left w-full xl:w-auto">
                 <h1 className="text-2xl font-bold text-gray-900">👋 Bem-vindo, {user?.nome?.split(" ")[0]}!</h1>
                 <p className="text-gray-500 text-sm">Personalize a visualização do painel:</p>
             </div>
 
-            {/* STATS (Blocos, Moradores, Pendentes) - ESTILO ATUALIZADO */}
-            <div className="flex flex-wrap justify-center gap-4 px-4 border-l border-r border-gray-100 mx-4">
+            {/* 
+               ==========================================================================
+               STATS (Blocos, Moradores, Pendentes) - MODO GRID NO MOBILE (3 COLUNAS FIXAS)
+               ==========================================================================
+               - grid-cols-3: Força 3 colunas no mobile
+               - sm:flex: Volta ao normal no Desktop
+               - w-full: Garante que use a largura toda no mobile
+            */}
+            <div className="grid grid-cols-3 sm:flex w-full sm:w-auto bg-gray-100 rounded-lg p-1 shadow-inner gap-1">
                 
                 {/* Blocos */}
-                <div className="group flex items-center gap-3 px-4 py-2 bg-[#057321] rounded-lg border border-[#057321] hover:bg-white transition-all duration-300 shadow-sm cursor-default">
-                    <Building2 size={20} className="text-white group-hover:text-[#057321] transition-colors" />
-                    <div className="text-left">
-                        <span className="block text-[10px] font-bold uppercase text-green-100 group-hover:text-green-700 transition-colors">Blocos</span>
-                        <span className="block text-xl font-black text-white group-hover:text-[#057321] leading-none transition-colors">{stats.blocos}</span>
+                <div className="flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-1 sm:gap-2 px-1 sm:px-3 py-2 rounded-md bg-white text-[#057321] shadow-sm cursor-default">
+                    <Building2 className="w-4 h-4 sm:w-[18px] sm:h-[18px]" />
+                    <div className="text-[10px] sm:text-sm font-medium leading-tight text-center sm:text-left">
+                      <span className="block sm:inline">Blocos: </span>
+                      <strong className="text-xs sm:text-sm">{stats.blocos}</strong>
                     </div>
                 </div>
 
                 {/* Moradores */}
-                <div className="group flex items-center gap-3 px-4 py-2 bg-[#057321] rounded-lg border border-[#057321] hover:bg-white transition-all duration-300 shadow-sm cursor-default">
-                    <Users size={20} className="text-white group-hover:text-[#057321] transition-colors" />
-                    <div className="text-left">
-                        <span className="block text-[10px] font-bold uppercase text-green-100 group-hover:text-green-700 transition-colors">Moradores</span>
-                        <span className="block text-xl font-black text-white group-hover:text-[#057321] leading-none transition-colors">{stats.moradores}</span>
+                <div className="flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-1 sm:gap-2 px-1 sm:px-3 py-2 rounded-md bg-white text-[#057321] shadow-sm cursor-default">
+                    <Users className="w-4 h-4 sm:w-[18px] sm:h-[18px]" />
+                    <div className="text-[10px] sm:text-sm font-medium leading-tight text-center sm:text-left">
+                      <span className="block sm:inline">Moradores: </span>
+                      <strong className="text-xs sm:text-sm">{stats.moradores}</strong>
                     </div>
                 </div>
 
                 {/* Pendentes */}
-                <div className="group flex items-center gap-3 px-4 py-2 bg-[#057321] rounded-lg border border-[#057321] hover:bg-white transition-all duration-300 shadow-sm cursor-default">
-                    <CheckSquare size={20} className="text-white group-hover:text-[#057321] transition-colors" />
-                    <div className="text-left">
-                        <span className="block text-[10px] font-bold uppercase text-green-100 group-hover:text-green-700 transition-colors">Pendentes</span>
-                        <span className="block text-xl font-black text-white group-hover:text-[#057321] leading-none transition-colors">{stats.pendentes}</span>
+                <div className="flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-1 sm:gap-2 px-1 sm:px-3 py-2 rounded-md bg-white text-[#057321] shadow-sm cursor-default">
+                    <CheckSquare className="w-4 h-4 sm:w-[18px] sm:h-[18px]" />
+                    <div className="text-[10px] sm:text-sm font-medium leading-tight text-center sm:text-left">
+                      <span className="block sm:inline">Pendentes: </span>
+                      <strong className="text-xs sm:text-sm">{stats.pendentes}</strong>
                     </div>
                 </div>
 
             </div>
 
-            {/* Botões de Layout */}
-            <div className="flex bg-gray-100 rounded-lg p-1 shadow-inner">
+            {/* Botões de Layout (Direita) */}
+            <div className="flex w-full sm:w-auto justify-center sm:justify-start bg-gray-100 rounded-lg p-1 shadow-inner">
                 <button 
                 onClick={() => changeLayout('original')} 
-                className={`flex items-center gap-2 px-4 py-2 rounded-md transition-all text-sm font-medium ${layoutMode === 'original' ? 'bg-white text-[#057321] shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-all text-sm font-medium ${layoutMode === 'original' ? 'bg-white text-[#057321] shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
                 >
-                <LayoutTemplate size={18} /> Padrão
+                <LayoutTemplate size={18} /> <span className="hidden sm:inline">Padrão</span><span className="sm:hidden">Padrão</span>
                 </button>
                 <button 
                 onClick={() => changeLayout('colunas')} 
-                className={`flex items-center gap-2 px-4 py-2 rounded-md transition-all text-sm font-medium ${layoutMode === 'colunas' ? 'bg-white text-[#057321] shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-all text-sm font-medium ${layoutMode === 'colunas' ? 'bg-white text-[#057321] shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
                 >
-                <Columns size={18} /> Colunas
+                <Columns size={18} /> <span className="hidden sm:inline">Colunas</span><span className="sm:hidden">Colunas</span>
                 </button>
                 <button 
                 onClick={() => changeLayout('linha')} 
-                className={`flex items-center gap-2 px-4 py-2 rounded-md transition-all text-sm font-medium ${layoutMode === 'linha' ? 'bg-white text-[#057321] shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-all text-sm font-medium ${layoutMode === 'linha' ? 'bg-white text-[#057321] shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
                 >
-                <ListVideo size={18} /> Linha
+                <ListVideo size={18} /> <span className="hidden sm:inline">Linha</span><span className="sm:hidden">Linha</span>
                 </button>
             </div>
         </div>
@@ -427,3 +434,5 @@ function DashboardResponsavel() {
 }
 
 export default withAuth(DashboardResponsavel, ["responsavel", "admin", "adminMaster"]);
+
+
