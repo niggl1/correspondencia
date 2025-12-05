@@ -17,7 +17,7 @@ const nextConfig = {
     unoptimized: isAppBuild ? true : false,
     domains: [
       'firebasestorage.googleapis.com',
-      'app-correspondencia-1a054.firebasestorage.app',
+      'correspondencia-9a73a.firebasestorage.app',
     ],
     formats: ['image/avif', 'image/webp'],
   },

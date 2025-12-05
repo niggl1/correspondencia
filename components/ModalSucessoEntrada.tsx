@@ -111,12 +111,13 @@ Aguardamos a sua retirada`;
     <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[60] p-4 animate-in fade-in duration-200">
       <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-200">
         
-        <div className="bg-blue-600 p-6 text-center">
+        {/* HEADER VERDE PADRÃO */}
+        <div className="bg-[#057321] p-6 text-center">
           <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-3 shadow-lg">
-            <CheckCircle className="text-blue-600" size={32} />
+            <CheckCircle className="text-[#057321]" size={32} />
           </div>
           <h2 className="text-2xl font-bold text-white">Registrado com Sucesso!</h2>
-          <p className="text-blue-100 text-sm mt-1">Protocolo #{protocolo}</p>
+          <p className="text-green-100 text-sm mt-1">Protocolo #{protocolo}</p>
         </div>
 
         <div className="p-6 space-y-4">
@@ -145,18 +146,18 @@ Aguardamos a sua retirada`;
             onClick={handleCopiarTexto}
             className="w-full flex items-center justify-center gap-3 py-3.5 rounded-xl bg-gray-100 text-gray-700 font-bold hover:bg-gray-200 transition-all shadow-sm"
           >
-            {copiado ? <CheckCircle size={22} className="text-green-600"/> : <Copy size={22} />}
+            {copiado ? <CheckCircle size={22} className="text-[#057321]"/> : <Copy size={22} />}
             {copiado ? "Texto Copiado!" : "Copiar Mensagem"}
           </button>
 
-          {/* Email */}
+          {/* Email - AGORA VERDE PADRÃO */}
           <button
             onClick={onReenviarEmail}
             disabled={!emailMorador}
             className={`w-full flex items-center justify-center gap-3 py-3.5 rounded-xl text-white font-bold text-lg transition-all shadow-md ${
               !emailMorador 
                 ? "bg-gray-300 cursor-not-allowed" 
-                : "bg-blue-600 hover:bg-blue-600 hover:-translate-y-0.5"
+                : "bg-[#057321] hover:bg-[#046119] hover:-translate-y-0.5"
             }`}
           >
             <Mail size={24} />

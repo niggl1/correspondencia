@@ -12,12 +12,12 @@ let app: FirebaseApp | null = null;
 try {
   // ✅ Configuração do Firebase — com suas credenciais do projeto
   const config = {
-    apiKey: "AIzaSyAzruTLO_g7UtNB5nWgsI-phczP9txTfIY",
-    authDomain: "app-correspondencia-1a054.firebaseapp.com",
-    projectId: "app-correspondencia-1a054",
-    storageBucket: "app-correspondencia-1a054.firebasestorage.app", // ✅ CORRIGIDO!
-    messagingSenderId: "706771378163",
-    appId: "1:706771378163:web:06d1a9765bede54631fc86",
+    apiKey: "AIzaSyBU5ULvPOhNRYND2k-tg9EuOK4wotym5I8",
+    authDomain: "correspondencia-9a73a.firebaseapp.com",
+    projectId: "correspondencia-9a73a",
+    storageBucket: "correspondencia-9a73a.firebasestorage.app", // ✅ CORRIGIDO!
+    messagingSenderId: "999413422800",
+    appId: "1:999413422800:web:cba5d9f7cbfab7784b5cd5",
   };
 
   // ✅ Evita re-inicialização em ambiente de desenvolvimento

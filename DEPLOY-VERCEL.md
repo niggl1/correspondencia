@@ -72,15 +72,16 @@ git push -u origin main
 Clique em **"Environment Variables"** e adicione:
 
 ```
-NEXT_PUBLIC_FIREBASE_API_KEY=AIzaSyAzruTLO_g7UtNB5nWgsI-phczP9txTfIY
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=app-correspondencia-1a054.firebaseapp.com
-NEXT_PUBLIC_FIREBASE_PROJECT_ID=app-correspondencia-1a054
-NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=app-correspondencia-1a054.appspot.com
-NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=706771378163
-NEXT_PUBLIC_FIREBASE_APP_ID=1:706771378163:web:06d1a9765bede54631fc86
+NEXT_PUBLIC_FIREBASE_API_KEY=AIzaSyBU5ULvPOhNRYND2k-tg9EuOK4wotym5I8
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=correspondencia-9a73a.firebaseapp.com
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=correspondencia-9a73a
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=correspondencia-9a73a.firebasestorage.app
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=999413422800
+NEXT_PUBLIC_FIREBASE_APP_ID=1:999413422800:web:cba5d9f7cbfab7784b5cd5
+NEXT_PUBLIC_BASE_URL=https://www.appcorrespondencia.com.br
 RESEND_API_KEY=re_7g4ouRFz_JjmRWu2VZCsc1VAVZNeh9jdx
 EMAIL_FROM=correspondencia@appcorrespondencia.com.br
-NEXT_PUBLIC_BASE_URL=https://app-correspondencia.vercel.app
+
 ```
 
 ⚠️ **IMPORTANTE:**
@@ -101,7 +102,7 @@ NEXT_PUBLIC_BASE_URL=https://app-correspondencia.vercel.app
 ### **3.1. Publicar Regras de Segurança**
 
 1. Acesse [Firebase Console](https://console.firebase.google.com/)
-2. Selecione seu projeto: **app-correspondencia-1a054**
+2. Selecione seu projeto: **correspondencia-9a73a**
 3. Vá em **Firestore Database** → **Regras**
 4. Copie o conteúdo do arquivo `firestore.rules` do projeto
 5. Cole no editor de regras

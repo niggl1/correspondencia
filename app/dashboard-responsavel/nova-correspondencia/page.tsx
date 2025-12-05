@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import UploadImagem from "@/components/UploadImagem";
 import SelectCondominioBlocoMorador from "@/components/SelectCondominioBlocoMorador";
@@ -91,7 +91,10 @@ function NovaCorrespondenciaResponsavelPage() {
   const [selectedBloco, setSelectedBloco] = useState("");
   const [selectedMorador, setSelectedMorador] = useState("");
   const [observacao, setObservacao] = useState("");
+  
+  // ATUALIZADO: Valor padrão e opções corrigidas
   const [localArmazenamento, setLocalArmazenamento] = useState("Portaria"); 
+  
   const [imagemFile, setImagemFile] = useState<File | null>(null);
 
   // Estados de sucesso/modal
@@ -105,9 +108,7 @@ function NovaCorrespondenciaResponsavelPage() {
   
   const [mensagemFormatada, setMensagemFormatada] = useState("");
   
-  // Rota de voltar para o responsável
   const backRoute = '/dashboard-responsavel';
-  
   const efetivoCondominioId = condominioId || "";
 
   const handleUpload = (file: File | null) => setImagemFile(file);
@@ -177,7 +178,6 @@ function NovaCorrespondenciaResponsavelPage() {
       const nomes = await buscarNomes();
       const novoProtocolo = `${Math.floor(Date.now() / 1000).toString().slice(-6)}`;
       
-      // CRIA A REFERÊNCIA (O ID JÁ EXISTE AQUI)
       const docRef = doc(collection(db, "correspondencias"));
       const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
       const novoLinkPublico = `${baseUrl}/ver/${docRef.id}`;
@@ -202,6 +202,8 @@ function NovaCorrespondenciaResponsavelPage() {
       const responsavelRegistro = `${nomeUser} (Gestão)`;
 
       setMessage("Gerando etiqueta...");
+      
+      // --- GERAÇÃO DO PDF COM O NOVO CAMPO ---
       const pdfBlob = await gerarEtiquetaPDF({
           protocolo: novoProtocolo,
           condominioNome: nomes.condominioNome,
@@ -210,7 +212,8 @@ function NovaCorrespondenciaResponsavelPage() {
           apartamento: nomes.apartamento, 
           dataChegada: new Date().toISOString(),
           recebidoPor: responsavelRegistro,
-          observacao: `${observacao} (Local: ${localArmazenamento})`,
+          observacao: observacao, // Observação limpa
+          localRetirada: localArmazenamento, // Passando o local separado
           fotoUrl: fotoBase64ParaPDF,
           logoUrl: "/logo-app-correspondencia.png"
       });
@@ -220,9 +223,6 @@ function NovaCorrespondenciaResponsavelPage() {
       setProtocolo(novoProtocolo);
       setProgress(60);
 
-      // -------------------------------------------------------
-      // UPLOAD E SALVAMENTO (AGORA ESPERAMOS ISSO TERMINAR!)
-      // -------------------------------------------------------
       setMessage("Salvando no sistema...");
       
       let publicPdfUrl = "";
@@ -240,7 +240,7 @@ function NovaCorrespondenciaResponsavelPage() {
           publicFotoUrl = await getDownloadURL(fotoRef);
       }
 
-      // 3. Salvar no Banco de Dados (USANDO O ID CORRETO)
+      // 3. Salvar no Banco
       await setDoc(docRef, {
           condominioId: efetivoCondominioId,
           blocoId: selectedBloco,
@@ -250,7 +250,7 @@ function NovaCorrespondenciaResponsavelPage() {
           apartamento: nomes.apartamento,
           protocolo: novoProtocolo,
           observacao,
-          localArmazenamento, 
+          localArmazenamento, // Salva no banco também
           status: "pendente", 
           criadoEm: Timestamp.now(),
           criadoPor: user?.email || "responsavel",
@@ -265,9 +265,7 @@ function NovaCorrespondenciaResponsavelPage() {
       console.log("✅ Correspondência salva com sucesso! ID:", docRef.id);
       setProgress(100);
 
-      // -------------------------------------------------------
-      // GERAÇÃO DA MENSAGEM (Só depois de salvar tudo)
-      // -------------------------------------------------------
+      // Mensagem Whatsapp
       const dataAtual = new Date();
       const dataFormatada = dataAtual.toLocaleDateString('pt-BR');
       const horaFormatada = dataAtual.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -286,7 +284,6 @@ function NovaCorrespondenciaResponsavelPage() {
       const msgBase = await getFormattedMessage('ARRIVAL', variaveis);
       setMensagemFormatada(`${msgBase}\n${novoLinkPublico}`);
 
-      // SÓ AGORA LIBERAMOS O MODAL
       setLoading(false);
       setShowSuccessModal(true);
 
@@ -378,6 +375,7 @@ function NovaCorrespondenciaResponsavelPage() {
               />
             </div>
 
+            {/* --- NOVA SEÇÃO DE LOCAL DE RETIRADA --- */}
             <div>
               <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
                 <MapPin size={18} className="text-[#057321]" /> Local de Retirada
@@ -387,11 +385,11 @@ function NovaCorrespondenciaResponsavelPage() {
                 onChange={(e) => setLocalArmazenamento(e.target.value)}
                 className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 focus:border-[#057321] focus:ring-4 focus:ring-[#057321]/10 outline-none transition-all bg-white text-gray-800 font-medium cursor-pointer"
               >
-                <option value="Portaria">Portaria Principal</option>
-                <option value="Locker">Locker / Armário Inteligente</option>
-                <option value="Sala de Encomendas">Sala de Encomendas</option>
-                <option value="Recepção">Recepção</option>
+                <option value="Portaria">Portaria</option>
                 <option value="Administração">Administração</option>
+                <option value="Sala de Correspondência">Sala de Correspondência</option>
+                <option value="Recepção">Recepção</option>
+                <option value="Smart Lockers">Smart Lockers</option>
               </select>
             </div>
 
@@ -431,7 +429,6 @@ function NovaCorrespondenciaResponsavelPage() {
           </div>
         </div>
 
-        {/* Modal de Configuração */}
         <MessageConfigModal
           isOpen={showConfigModal}
           onClose={() => setShowConfigModal(false)}

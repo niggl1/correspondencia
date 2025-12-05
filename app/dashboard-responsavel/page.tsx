@@ -23,10 +23,11 @@ import {
   CheckSquare,
   Download,
   Link as LinkIcon,
-  MessageSquare // Importado o ícone de mensagem
+  MessageSquare,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 import GerarFolder from "@/components/GerarFolder";
-import MenuGestaoCondominio from "@/components/MenuGestaoCondominio";
 import { db } from "@/app/lib/firebase";
 import { useAuth } from "@/hooks/useAuth";
 import { collection, query, where, getCountFromServer } from "firebase/firestore";
@@ -38,6 +39,9 @@ function DashboardResponsavel() {
 
   const [layoutMode, setLayoutMode] = useState<'original' | 'colunas' | 'linha'>('original');
   const [isMounted, setIsMounted] = useState(false);
+  
+  // Estado para controlar a visibilidade da barra de cadastros
+  const [isCadastrosOpen, setIsCadastrosOpen] = useState(false);
 
   const [stats, setStats] = useState({
     blocos: 0,
@@ -61,6 +65,10 @@ function DashboardResponsavel() {
   const changeLayout = (mode: 'original' | 'colunas' | 'linha') => {
     setLayoutMode(mode);
     localStorage.setItem("layout_pref_responsavel", mode);
+  };
+
+  const toggleCadastros = () => {
+    setIsCadastrosOpen(!isCadastrosOpen);
   };
 
   const carregarEstatisticas = async () => {
@@ -139,12 +147,46 @@ function DashboardResponsavel() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-12">
         
-        {/* Seletor de Layout */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-6 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+        {/* Seletor de Layout e Stats */}
+        <div className="flex flex-col xl:flex-row items-center justify-between gap-4 mb-6 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
             <div className="text-center sm:text-left">
                 <h1 className="text-2xl font-bold text-gray-900">👋 Bem-vindo, {user?.nome?.split(" ")[0]}!</h1>
                 <p className="text-gray-500 text-sm">Personalize a visualização do painel:</p>
             </div>
+
+            {/* STATS (Blocos, Moradores, Pendentes) - ESTILO ATUALIZADO */}
+            <div className="flex flex-wrap justify-center gap-4 px-4 border-l border-r border-gray-100 mx-4">
+                
+                {/* Blocos */}
+                <div className="group flex items-center gap-3 px-4 py-2 bg-[#057321] rounded-lg border border-[#057321] hover:bg-white transition-all duration-300 shadow-sm cursor-default">
+                    <Building2 size={20} className="text-white group-hover:text-[#057321] transition-colors" />
+                    <div className="text-left">
+                        <span className="block text-[10px] font-bold uppercase text-green-100 group-hover:text-green-700 transition-colors">Blocos</span>
+                        <span className="block text-xl font-black text-white group-hover:text-[#057321] leading-none transition-colors">{stats.blocos}</span>
+                    </div>
+                </div>
+
+                {/* Moradores */}
+                <div className="group flex items-center gap-3 px-4 py-2 bg-[#057321] rounded-lg border border-[#057321] hover:bg-white transition-all duration-300 shadow-sm cursor-default">
+                    <Users size={20} className="text-white group-hover:text-[#057321] transition-colors" />
+                    <div className="text-left">
+                        <span className="block text-[10px] font-bold uppercase text-green-100 group-hover:text-green-700 transition-colors">Moradores</span>
+                        <span className="block text-xl font-black text-white group-hover:text-[#057321] leading-none transition-colors">{stats.moradores}</span>
+                    </div>
+                </div>
+
+                {/* Pendentes */}
+                <div className="group flex items-center gap-3 px-4 py-2 bg-[#057321] rounded-lg border border-[#057321] hover:bg-white transition-all duration-300 shadow-sm cursor-default">
+                    <CheckSquare size={20} className="text-white group-hover:text-[#057321] transition-colors" />
+                    <div className="text-left">
+                        <span className="block text-[10px] font-bold uppercase text-green-100 group-hover:text-green-700 transition-colors">Pendentes</span>
+                        <span className="block text-xl font-black text-white group-hover:text-[#057321] leading-none transition-colors">{stats.pendentes}</span>
+                    </div>
+                </div>
+
+            </div>
+
+            {/* Botões de Layout */}
             <div className="flex bg-gray-100 rounded-lg p-1 shadow-inner">
                 <button 
                 onClick={() => changeLayout('original')} 
@@ -218,31 +260,31 @@ function DashboardResponsavel() {
         )}
 
         {/* ===================================================================================== */}
-        {/* LAYOUT 2: COLUNAS (AJUSTADO - SIMETRIA PERFEITA) */}
+        {/* LAYOUT 2: COLUNAS (2 COLUNAS) */}
         {/* ===================================================================================== */}
         {layoutMode === 'colunas' && (
-            <div className="grid grid-cols-3 gap-3 mb-8 items-start">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 items-start">
                 
                 {/* --- COLUNA 1: AVISOS --- */}
                 <div className="bg-green-50 rounded-xl border-2 border-[#057321] overflow-hidden flex flex-col shadow-sm h-full">
                         <div className="bg-[#057321] p-2 text-center">
                             <h3 className="text-xs font-bold text-white uppercase tracking-wider">AVISOS</h3>
                         </div>
-                        <div className="p-3 flex flex-col gap-3 h-full">
+                        <div className="p-4 flex flex-col gap-4 h-full">
                         
-                        <button onClick={() => router.push("/dashboard-responsavel/nova-correspondencia")} className="w-full flex flex-col items-center justify-center gap-1 p-3 bg-gradient-to-r from-[#057321] to-[#046119] text-white rounded-xl shadow-md active:scale-[0.98] transition-all h-20">
-                            <div><Plus size={24} /></div>
-                            <span className="text-xs font-bold text-center uppercase">AVISOS</span>
+                        <button onClick={() => router.push("/dashboard-responsavel/nova-correspondencia")} className="w-full flex flex-col items-center justify-center gap-1 p-4 bg-gradient-to-r from-[#057321] to-[#046119] text-white rounded-xl shadow-md active:scale-[0.98] transition-all h-24 hover:scale-[1.02]">
+                            <div><Plus size={32} /></div>
+                            <span className="text-sm font-bold text-center uppercase">AVISOS</span>
                         </button>
 
-                        <button onClick={() => router.push("/dashboard-responsavel/registrar-retirada")} className="w-full flex flex-col items-center justify-center gap-1 p-3 bg-gradient-to-r from-[#057321] to-[#046119] text-white rounded-xl shadow-md active:scale-[0.98] transition-all h-20">
-                            <div><FileText size={24} /></div>
-                            <span className="text-xs font-bold text-center uppercase">RETIRADA</span>
+                        <button onClick={() => router.push("/dashboard-responsavel/registrar-retirada")} className="w-full flex flex-col items-center justify-center gap-1 p-4 bg-gradient-to-r from-[#057321] to-[#046119] text-white rounded-xl shadow-md active:scale-[0.98] transition-all h-24 hover:scale-[1.02]">
+                            <div><FileText size={32} /></div>
+                            <span className="text-sm font-bold text-center uppercase">RETIRADA</span>
                         </button>
 
-                        <button onClick={() => router.push("/dashboard-responsavel/avisos-rapidos")} className="w-full flex flex-col items-center justify-center gap-1 p-3 bg-gradient-to-r from-[#057321] to-[#046119] text-white rounded-xl shadow-md active:scale-[0.98] transition-all h-20">
-                            <div><Zap size={24} /></div>
-                            <span className="text-xs font-bold text-center uppercase">RÁPIDO</span>
+                        <button onClick={() => router.push("/dashboard-responsavel/avisos-rapidos")} className="w-full flex flex-col items-center justify-center gap-1 p-4 bg-gradient-to-r from-[#057321] to-[#046119] text-white rounded-xl shadow-md active:scale-[0.98] transition-all h-24 hover:scale-[1.02]">
+                            <div><Zap size={32} /></div>
+                            <span className="text-sm font-bold text-center uppercase">RÁPIDO</span>
                         </button>
                         </div>
                 </div>
@@ -252,45 +294,21 @@ function DashboardResponsavel() {
                         <div className="bg-[#057321] p-2 text-center">
                             <h3 className="text-xs font-bold text-white uppercase tracking-wider">CONSULTAS</h3>
                         </div>
-                        <div className="p-3 flex flex-col gap-3 h-full">
+                        <div className="p-4 flex flex-col gap-4 h-full">
                             
-                            <button onClick={() => router.push("/dashboard-responsavel/correspondencias")} className="w-full flex flex-col items-center justify-center gap-1 p-3 bg-gradient-to-r from-[#057321] to-[#046119] text-white rounded-xl shadow-md active:scale-[0.98] transition-all h-20">
-                                <div><List size={24} /></div>
-                                <span className="text-xs font-bold text-center uppercase">ENVIADOS</span>
+                            <button onClick={() => router.push("/dashboard-responsavel/correspondencias")} className="w-full flex flex-col items-center justify-center gap-1 p-4 bg-gradient-to-r from-[#057321] to-[#046119] text-white rounded-xl shadow-md active:scale-[0.98] transition-all h-24 hover:scale-[1.02]">
+                                <div><List size={32} /></div>
+                                <span className="text-sm font-bold text-center uppercase">ENVIADOS</span>
                             </button>
 
-                            <button onClick={() => router.push("/dashboard-responsavel/historico")} className="w-full flex flex-col items-center justify-center gap-1 p-3 bg-gradient-to-r from-[#057321] to-[#046119] text-white rounded-xl shadow-md active:scale-[0.98] transition-all h-20">
-                                <div><Clock size={24} /></div>
-                                <span className="text-xs font-bold text-center uppercase">HISTÓRICO</span>
+                            <button onClick={() => router.push("/dashboard-responsavel/historico")} className="w-full flex flex-col items-center justify-center gap-1 p-4 bg-gradient-to-r from-[#057321] to-[#046119] text-white rounded-xl shadow-md active:scale-[0.98] transition-all h-24 hover:scale-[1.02]">
+                                <div><Clock size={32} /></div>
+                                <span className="text-sm font-bold text-center uppercase">HISTÓRICO</span>
                             </button>
 
-                            <button onClick={() => router.push("/dashboard-responsavel/relatorios")} className="w-full flex flex-col items-center justify-center gap-1 p-3 bg-gradient-to-r from-[#057321] to-[#046119] text-white rounded-xl shadow-md active:scale-[0.98] transition-all h-20">
-                                <div><FileBarChart size={24} /></div>
-                                <span className="text-xs font-bold text-center uppercase">RELATÓRIOS</span>
-                            </button>
-                        </div>
-                </div>
-
-                {/* --- COLUNA 3: CADASTROS (AGORA IDÊNTICO) --- */}
-                <div className="bg-green-50 rounded-xl border-2 border-[#057321] overflow-hidden flex flex-col shadow-sm h-full">
-                        <div className="bg-[#057321] p-2 text-center">
-                            <h3 className="text-xs font-bold text-white uppercase tracking-wider">CADASTROS</h3>
-                        </div>
-                        <div className="p-3 flex flex-col gap-3 h-full">
-                            
-                            <button onClick={() => router.push("/dashboard-responsavel/blocos")} className="w-full flex flex-col items-center justify-center gap-1 p-3 bg-white border border-gray-200 rounded-xl shadow-sm active:scale-[0.98] transition-all text-[#057321] hover:bg-green-50 h-20">
-                                <div><Building2 size={24} /></div>
-                                <span className="text-xs font-bold text-center uppercase">BLOCOS</span>
-                            </button>
-
-                            <button onClick={() => router.push("/dashboard-responsavel/moradores")} className="w-full flex flex-col items-center justify-center gap-1 p-3 bg-white border border-gray-200 rounded-xl shadow-sm active:scale-[0.98] transition-all text-[#057321] hover:bg-green-50 h-20">
-                                <div><Home size={24} /></div>
-                                <span className="text-xs font-bold text-center uppercase">MORADORES</span>
-                            </button>
-
-                            <button onClick={() => router.push("/dashboard-responsavel/porteiros")} className="w-full flex flex-col items-center justify-center gap-1 p-3 bg-white border border-gray-200 rounded-xl shadow-sm active:scale-[0.98] transition-all text-[#057321] hover:bg-green-50 h-20">
-                                <div><UserCog size={24} /></div>
-                                <span className="text-xs font-bold text-center uppercase">PORTEIROS</span>
+                            <button onClick={() => router.push("/dashboard-responsavel/relatorios")} className="w-full flex flex-col items-center justify-center gap-1 p-4 bg-gradient-to-r from-[#057321] to-[#046119] text-white rounded-xl shadow-md active:scale-[0.98] transition-all h-24 hover:scale-[1.02]">
+                                <div><FileBarChart size={32} /></div>
+                                <span className="text-sm font-bold text-center uppercase">RELATÓRIOS</span>
                             </button>
                         </div>
                 </div>
@@ -301,109 +319,106 @@ function DashboardResponsavel() {
         {/* LAYOUT 3: LINHA ÚNICA */}
         {/* ===================================================================================== */}
         {layoutMode === 'linha' && (
-            <>
-                <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mb-8">
-                    <button onClick={() => router.push("/dashboard-responsavel/nova-correspondencia")} className="aspect-square flex flex-col items-center justify-center gap-2 p-2 bg-gradient-to-r from-[#057321] to-[#046119] text-white rounded-2xl hover:from-[#046119] hover:to-[#035218] transition-all font-bold shadow-md">
-                        <Plus size={32} /> <span className="text-center text-xs leading-tight">Nova<br />Entrega</span>
-                    </button>
-                    <button onClick={() => router.push("/dashboard-responsavel/avisos-rapidos")} className="aspect-square flex flex-col items-center justify-center gap-2 p-2 bg-gradient-to-r from-[#057321] to-[#046119] text-white rounded-2xl hover:from-[#046119] hover:to-[#035218] transition-all font-bold shadow-md">
-                        <Zap size={32} /> <span className="text-center text-xs">Avisos<br/>Rápidos</span>
-                    </button>
-                    <button onClick={() => router.push("/dashboard-responsavel/registrar-retirada")} className="aspect-square flex flex-col items-center justify-center gap-2 p-2 bg-gradient-to-r from-[#057321] to-[#046119] text-white rounded-2xl hover:from-[#046119] hover:to-[#035218] transition-all font-bold shadow-md">
-                        <FileText size={32} /> <span className="text-center text-xs">Registrar<br/>Retirada</span>
-                    </button>
-                    <button onClick={() => router.push("/dashboard-responsavel/correspondencias")} className="aspect-square flex flex-col items-center justify-center gap-2 p-2 bg-gradient-to-r from-[#057321] to-[#046119] text-white rounded-2xl hover:from-[#046119] hover:to-[#035218] transition-all font-bold shadow-md">
-                        <List size={32} /> <span className="text-center text-xs">Avisos<br/>Enviados</span>
-                    </button>
-                    <button onClick={() => router.push("/dashboard-responsavel/historico")} className="aspect-square flex flex-col items-center justify-center gap-2 p-2 bg-gradient-to-r from-[#057321] to-[#046119] text-white rounded-2xl hover:from-[#046119] hover:to-[#035218] transition-all font-bold shadow-md">
-                        <Clock size={32} /> <span className="text-center text-xs">Histórico<br/>Recibos</span>
-                    </button>
-                    <button onClick={() => router.push("/dashboard-responsavel/relatorios")} className="aspect-square flex flex-col items-center justify-center gap-2 p-2 bg-gradient-to-r from-[#057321] to-[#046119] text-white rounded-2xl hover:from-[#046119] hover:to-[#035218] transition-all font-bold shadow-md">
-                        <FileBarChart size={32} /> <span className="text-center text-xs">Relatórios<br/>Gerais</span>
-                    </button>
-                </div>
-
-                {/* Barra de Cadastro */}
-                <div className="rounded-2xl border border-green-100 overflow-hidden mb-8 shadow-sm bg-white">
-                    <div className="bg-[#057321] px-4 py-3 flex items-center justify-between">
-                        <h3 className="text-sm font-bold text-white uppercase tracking-widest flex items-center gap-2">
-                            <Users size={18} className="text-white" /> Cadastro de Blocos, Moradores, Porteiros e Aprovações
-                        </h3>
-                    </div>
-                    
-                    {/* ALTERAÇÃO AQUI: Mudado grid-cols-4 para grid-cols-5 para acomodar o novo botão */}
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 p-6">
-                         <div onClick={() => router.push("/dashboard-responsavel/blocos")} className="flex flex-col items-center justify-center gap-2 p-4 bg-white border border-gray-100 rounded-xl hover:bg-green-50 cursor-pointer transition-all shadow-sm group">
-                             <Building2 size={32} className="text-[#057321]" />
-                             <span className="font-bold text-gray-700">Blocos</span>
-                             <span className="text-xs text-gray-400">{stats.blocos} Cadastrados</span>
-                         </div>
-                         <div onClick={() => router.push("/dashboard-responsavel/moradores")} className="flex flex-col items-center justify-center gap-2 p-4 bg-white border border-gray-100 rounded-xl hover:bg-green-50 cursor-pointer transition-all shadow-sm group">
-                             <Home size={32} className="text-[#057321]" />
-                             <span className="font-bold text-gray-700">Moradores</span>
-                             <span className="text-xs text-gray-400">{stats.moradores} Ativos</span>
-                         </div>
-                         <div onClick={() => router.push("/dashboard-responsavel/porteiros")} className="flex flex-col items-center justify-center gap-2 p-4 bg-white border border-gray-100 rounded-xl hover:bg-green-50 cursor-pointer transition-all shadow-sm group">
-                             <UserCog size={32} className="text-[#057321]" />
-                             <span className="font-bold text-gray-700">Porteiros</span>
-                             <span className="text-xs text-gray-400">Gerenciar</span>
-                         </div>
-                         <div onClick={() => router.push("/dashboard-responsavel/aprovacoes")} className="flex flex-col items-center justify-center gap-2 p-4 bg-white border border-gray-100 rounded-xl hover:bg-green-50 cursor-pointer transition-all shadow-sm group">
-                             <CheckSquare size={32} className="text-[#057321]" />
-                             <span className="font-bold text-gray-700">Aprovar</span>
-                             <span className="text-xs text-gray-400">{stats.pendentes} Pendentes</span>
-                         </div>
-                         
-                         {/* NOVO BOTÃO DE CONFIGURAÇÃO DE MENSAGENS */}
-                         <div onClick={() => router.push("/dashboard-responsavel/configuracao-mensagens")} className="flex flex-col items-center justify-center gap-2 p-4 bg-white border border-gray-100 rounded-xl hover:bg-green-50 cursor-pointer transition-all shadow-sm group">
-                             <MessageSquare size={32} className="text-[#057321]" />
-                             <span className="font-bold text-gray-700 text-center">Mensagens</span>
-                             <span className="text-xs text-gray-400">Configurar</span>
-                         </div>
-                    </div>
-                </div>
-            </>
+            <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mb-8">
+                <button onClick={() => router.push("/dashboard-responsavel/nova-correspondencia")} className="aspect-square flex flex-col items-center justify-center gap-2 p-2 bg-gradient-to-r from-[#057321] to-[#046119] text-white rounded-2xl hover:from-[#046119] hover:to-[#035218] transition-all font-bold shadow-md">
+                    <Plus size={32} /> <span className="text-center text-xs leading-tight">Nova<br />Entrega</span>
+                </button>
+                <button onClick={() => router.push("/dashboard-responsavel/avisos-rapidos")} className="aspect-square flex flex-col items-center justify-center gap-2 p-2 bg-gradient-to-r from-[#057321] to-[#046119] text-white rounded-2xl hover:from-[#046119] hover:to-[#035218] transition-all font-bold shadow-md">
+                    <Zap size={32} /> <span className="text-center text-xs">Avisos<br/>Rápidos</span>
+                </button>
+                <button onClick={() => router.push("/dashboard-responsavel/registrar-retirada")} className="aspect-square flex flex-col items-center justify-center gap-2 p-2 bg-gradient-to-r from-[#057321] to-[#046119] text-white rounded-2xl hover:from-[#046119] hover:to-[#035218] transition-all font-bold shadow-md">
+                    <FileText size={32} /> <span className="text-center text-xs">Registrar<br/>Retirada</span>
+                </button>
+                <button onClick={() => router.push("/dashboard-responsavel/correspondencias")} className="aspect-square flex flex-col items-center justify-center gap-2 p-2 bg-gradient-to-r from-[#057321] to-[#046119] text-white rounded-2xl hover:from-[#046119] hover:to-[#035218] transition-all font-bold shadow-md">
+                    <List size={32} /> <span className="text-center text-xs">Avisos<br/>Enviados</span>
+                </button>
+                <button onClick={() => router.push("/dashboard-responsavel/historico")} className="aspect-square flex flex-col items-center justify-center gap-2 p-2 bg-gradient-to-r from-[#057321] to-[#046119] text-white rounded-2xl hover:from-[#046119] hover:to-[#035218] transition-all font-bold shadow-md">
+                    <Clock size={32} /> <span className="text-center text-xs">Histórico<br/>Recibos</span>
+                </button>
+                <button onClick={() => router.push("/dashboard-responsavel/relatorios")} className="aspect-square flex flex-col items-center justify-center gap-2 p-2 bg-gradient-to-r from-[#057321] to-[#046119] text-white rounded-2xl hover:from-[#046119] hover:to-[#035218] transition-all font-bold shadow-md">
+                    <FileBarChart size={32} /> <span className="text-center text-xs">Relatórios<br/>Gerais</span>
+                </button>
+            </div>
         )}
 
-        {/* Menu Gestão (Apenas para Original) */}
-        {layoutMode === 'original' && <MenuGestaoCondominio />}
-
-        {/* STATS GERAIS */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mt-8">
-            <div className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-[#057321] flex flex-col items-center justify-center text-center">
-                <p className="text-gray-500 text-xs font-bold uppercase mb-1">Blocos</p>
-                <p className="text-3xl font-black text-[#057321]">{stats.blocos}</p>
-            </div>
-
-            <div className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-[#057321] flex flex-col items-center justify-center text-center">
-                <p className="text-gray-500 text-xs font-bold uppercase mb-1">Moradores</p>
-                <p className="text-3xl font-black text-[#057321]">{stats.moradores}</p>
-            </div>
-
-            <div className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-[#057321] flex flex-col items-center justify-center text-center">
-                <p className="text-gray-500 text-xs font-bold uppercase mb-1">Pendentes</p>
-                <p className="text-3xl font-black text-[#057321]">{stats.pendentes}</p>
-            </div>
-
-            <button 
-                onClick={copiarLinkCadastro}
-                className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-[#057321] flex flex-col items-center justify-center text-center hover:bg-green-50 transition-colors group"
+        {/* ===================================================================================== */}
+        {/* BARRA UNIFICADA COM TOGGLE: CADASTROS E CONFIGURAÇÕES */}
+        {/* ===================================================================================== */}
+        <div className="rounded-2xl border border-green-100 overflow-hidden mb-8 shadow-sm bg-white transition-all duration-300">
+            {/* Header da Barra - Clicável para abrir/fechar */}
+            <div 
+                onClick={toggleCadastros}
+                className="bg-[#057321] px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-[#046119] transition-colors select-none"
             >
-                <p className="text-gray-500 text-xs font-bold uppercase mb-1 group-hover:text-[#057321]">Divulgar</p>
-                <div className="flex items-center gap-2 text-[#057321]">
-                    <LinkIcon size={20} />
-                    <span className="font-bold text-sm">Copiar Link</span>
-                </div>
-            </button>
+                <h3 className="text-sm font-bold text-white uppercase tracking-widest flex items-center gap-2">
+                    <Users size={18} className="text-white" /> Gestão de Cadastros e Configurações
+                </h3>
+                {isCadastrosOpen ? (
+                    <ChevronUp size={20} className="text-white" />
+                ) : (
+                    <ChevronDown size={20} className="text-white" />
+                )}
+            </div>
+            
+            {/* Grid de Itens - Renderização Condicional */}
+            {isCadastrosOpen && (
+                <div className="grid grid-cols-2 md:grid-cols-7 gap-3 p-4 sm:p-6 animate-in slide-in-from-top-2 duration-300">
+                    {/* 1. Blocos */}
+                    <div onClick={() => router.push("/dashboard-responsavel/blocos")} className="group flex flex-col items-center justify-center gap-2 p-3 bg-white border border-gray-100 rounded-xl hover:bg-[#057321] cursor-pointer transition-all shadow-sm">
+                        <Building2 size={28} className="text-[#057321] group-hover:text-white transition-colors" />
+                        <span className="font-bold text-gray-700 text-sm group-hover:text-white transition-colors">Blocos</span>
+                        <span className="text-[10px] text-gray-400 group-hover:text-green-200 transition-colors">Gerenciar</span>
+                    </div>
 
-            <div className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-[#057321] flex flex-col items-center justify-center text-center hover:bg-green-50 transition-colors group cursor-pointer">
-                <p className="text-gray-500 text-xs font-bold uppercase mb-1 group-hover:text-[#057321]">Impressão</p>
-                <div className="flex items-center gap-2 text-[#057321]">
-                    <div className="font-bold text-sm">
-                        <GerarFolder condominioId={user?.condominioId || ""} condominioNome={user?.nome || ""} condominioEndereco="" responsavelNome={user?.nome} />
+                    {/* 2. Moradores */}
+                    <div onClick={() => router.push("/dashboard-responsavel/moradores")} className="group flex flex-col items-center justify-center gap-2 p-3 bg-white border border-gray-100 rounded-xl hover:bg-[#057321] cursor-pointer transition-all shadow-sm">
+                        <Home size={28} className="text-[#057321] group-hover:text-white transition-colors" />
+                        <span className="font-bold text-gray-700 text-sm group-hover:text-white transition-colors">Moradores</span>
+                        <span className="text-[10px] text-gray-400 group-hover:text-green-200 transition-colors">Gerenciar</span>
+                    </div>
+
+                    {/* 3. Porteiros */}
+                    <div onClick={() => router.push("/dashboard-responsavel/porteiros")} className="group flex flex-col items-center justify-center gap-2 p-3 bg-white border border-gray-100 rounded-xl hover:bg-[#057321] cursor-pointer transition-all shadow-sm">
+                        <UserCog size={28} className="text-[#057321] group-hover:text-white transition-colors" />
+                        <span className="font-bold text-gray-700 text-sm group-hover:text-white transition-colors">Porteiros</span>
+                        <span className="text-[10px] text-gray-400 group-hover:text-green-200 transition-colors">Gerenciar</span>
+                    </div>
+
+                    {/* 4. Aprovações */}
+                    <div onClick={() => router.push("/dashboard-responsavel/aprovacoes")} className="group flex flex-col items-center justify-center gap-2 p-3 bg-white border border-gray-100 rounded-xl hover:bg-[#057321] cursor-pointer transition-all shadow-sm">
+                        <CheckSquare size={28} className="text-[#057321] group-hover:text-white transition-colors" />
+                        <span className="font-bold text-gray-700 text-sm group-hover:text-white transition-colors">Aprovar</span>
+                        <span className="text-[10px] text-gray-400 group-hover:text-green-200 transition-colors">Pendentes</span>
+                    </div>
+                    
+                    {/* 5. Mensagens */}
+                    <div onClick={() => router.push("/dashboard-responsavel/configuracao-mensagens")} className="group flex flex-col items-center justify-center gap-2 p-3 bg-white border border-gray-100 rounded-xl hover:bg-[#057321] cursor-pointer transition-all shadow-sm">
+                        <MessageSquare size={28} className="text-[#057321] group-hover:text-white transition-colors" />
+                        <span className="font-bold text-gray-700 text-sm group-hover:text-white transition-colors">Mensagens</span>
+                        <span className="text-[10px] text-gray-400 group-hover:text-green-200 transition-colors">Configurar</span>
+                    </div>
+
+                    {/* 6. Copiar Link */}
+                    <div onClick={copiarLinkCadastro} className="group flex flex-col items-center justify-center gap-2 p-3 bg-white border border-gray-100 rounded-xl hover:bg-[#057321] cursor-pointer transition-all shadow-sm">
+                        <LinkIcon size={28} className="text-[#057321] group-hover:text-white transition-colors" />
+                        <span className="font-bold text-gray-700 text-sm group-hover:text-white transition-colors">Copiar Link</span>
+                        <span className="text-[10px] text-gray-400 group-hover:text-green-200 transition-colors">Divulgar</span>
+                    </div>
+
+                    {/* 7. Gerar Folder */}
+                    <div className="group flex flex-col items-center justify-center gap-2 p-3 bg-white border border-gray-100 rounded-xl hover:bg-[#057321] cursor-pointer transition-all shadow-sm relative overflow-hidden">
+                        {/* Visual do Card */}
+                        <Download size={28} className="text-[#057321] group-hover:text-white transition-colors" />
+                        <span className="font-bold text-gray-700 text-sm group-hover:text-white transition-colors">Impressão</span>
+                        <span className="text-[10px] text-gray-400 group-hover:text-green-200 transition-colors">Cartaz</span>
+                        
+                        {/* Componente Funcional Invisível sobreposto */}
+                        <div className="absolute inset-0 opacity-0 z-10 flex items-center justify-center">
+                            <GerarFolder condominioId={user?.condominioId || ""} condominioNome={user?.nome || ""} condominioEndereco="" responsavelNome={user?.nome} />
+                        </div>
                     </div>
                 </div>
-            </div>
+            )}
         </div>
 
       </main>

@@ -12,7 +12,7 @@ import { gerarReciboPDF } from "@/utils/gerarReciboPDF";
 import { LoadingOverlay } from "@/components/LoadingOverlay";
 import ModalSucessoRetirada from "./ModalSucessoRetirada";
 import type { ConfiguracoesRetirada, DadosRetirada } from "@/types/retirada.types";
-import { useTemplates } from "@/hooks/useTemplates"; // <--- IMPORTANTE: Hook de Templates
+import { useTemplates } from "@/hooks/useTemplates"; 
 
 interface Props {
   correspondencia: any;
@@ -74,9 +74,7 @@ export default function ModalRetiradaProfissional({
 }: Props) {
   const { user } = useAuth(); 
   
-  // --- Hook de Templates (NOVO) ---
   const { getFormattedMessage } = useTemplates(user?.condominioId || "");
-  // --------------------------------
 
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -85,7 +83,6 @@ export default function ModalRetiradaProfissional({
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [finalPdfUrl, setFinalPdfUrl] = useState("");
   
-  // ESTADO DA MENSAGEM
   const [mensagemFormatada, setMensagemFormatada] = useState("");
 
   const [moradorPhone, setMoradorPhone] = useState(
@@ -242,7 +239,6 @@ export default function ModalRetiradaProfissional({
       setFinalPdfUrl(publicPdfUrl); 
       setProgress(100);
       
-      // --- GERAÇÃO DA MENSAGEM VIA TEMPLATE (CORREÇÃO AQUI) ---
       const dataHoje = new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
       
       const variaveis = {
@@ -256,14 +252,10 @@ export default function ModalRetiradaProfissional({
         CONDOMINIO: correspondencia.condominioNome || "Condomínio"
       };
 
-      // 1. Busca o template configurado
       const msgBase = await getFormattedMessage('PICKUP', variaveis);
-      
-      // 2. Adiciona o link do PDF no final
       const msgFinal = `${msgBase}\n\nVer comprovante: ${publicPdfUrl}`;
 
       setMensagemFormatada(msgFinal);
-      // -------------------------------------------------------
 
       setLoading(false);
       setShowSuccessModal(true);
@@ -327,7 +319,7 @@ export default function ModalRetiradaProfissional({
             telefoneMorador={moradorPhone}
             emailMorador={moradorEmail}
             pdfUrl={finalPdfUrl}
-            mensagemFormatada={mensagemFormatada} // Passando a mensagem formatada corretamente
+            mensagemFormatada={mensagemFormatada} 
             onClose={handleCloseSuccess} 
           />
       );
@@ -346,12 +338,13 @@ export default function ModalRetiradaProfissional({
       <LoadingOverlay isVisible={loading} progress={progress} message={message} />
       <div className={containerClass}>
         {!embedded && (
-          <div className="bg-primary-600 text-white p-6 rounded-t-lg flex items-center justify-between">
+          /* Header VERDE PADRÃO */
+          <div className="bg-[#057321] text-white p-6 rounded-t-lg flex items-center justify-between">
             <div>
               <h2 className="text-2xl font-bold">Registrar Retirada</h2>
-              <p className="text-primary-100 text-sm mt-1">Protocolo: {correspondencia.protocolo}</p>
+              <p className="text-green-100 text-sm mt-1">Protocolo: {correspondencia.protocolo}</p>
             </div>
-            <button onClick={onClose} className="text-white hover:bg-primary-700 p-2 rounded-lg" disabled={loading}>
+            <button onClick={onClose} className="text-white hover:bg-[#046119] p-2 rounded-lg transition-colors" disabled={loading}>
               <X size={24} />
             </button>
           </div>
@@ -376,16 +369,16 @@ export default function ModalRetiradaProfissional({
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Nome de quem retirou *</label>
-              <input type="text" value={nomeQuemRetirou} onChange={(e) => setNomeQuemRetirou(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="Nome completo" disabled={loading} />
+              <input type="text" value={nomeQuemRetirou} onChange={(e) => setNomeQuemRetirou(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-[#057321] focus:border-[#057321]" placeholder="Nome completo" disabled={loading} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">CPF</label>
-                <input type="text" value={cpfQuemRetirou} onChange={(e) => setCpfQuemRetirou(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="000.000.000-00" disabled={loading} />
+                <input type="text" value={cpfQuemRetirou} onChange={(e) => setCpfQuemRetirou(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-[#057321] focus:border-[#057321]" placeholder="000.000.000-00" disabled={loading} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Telefone</label>
-                <input type="text" value={telefoneQuemRetirou} onChange={(e) => setTelefoneQuemRetirou(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="(00) 00000-0000" disabled={loading} />
+                <input type="text" value={telefoneQuemRetirou} onChange={(e) => setTelefoneQuemRetirou(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-[#057321] focus:border-[#057321]" placeholder="(00) 00000-0000" disabled={loading} />
               </div>
             </div>
             <div>
@@ -394,7 +387,7 @@ export default function ModalRetiradaProfissional({
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Observações</label>
-              <textarea value={observacoes} onChange={(e) => setObservacoes(e.target.value)} rows={3} className="w-full px-4 py-2 border border-gray-300 rounded-lg" disabled={loading} />
+              <textarea value={observacoes} onChange={(e) => setObservacoes(e.target.value)} rows={3} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-[#057321] focus:border-[#057321]" disabled={loading} />
             </div>
           </div>
 
@@ -420,7 +413,7 @@ export default function ModalRetiradaProfissional({
                         id="salvarPadrao"
                         checked={salvarPadrao}
                         onChange={(e) => setSalvarPadrao(e.target.checked)}
-                        className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500 cursor-pointer"
+                        className="w-4 h-4 text-[#057321] border-gray-300 rounded focus:ring-[#057321] cursor-pointer"
                     />
                     <label htmlFor="salvarPadrao" className="text-sm text-gray-600 cursor-pointer select-none flex items-center gap-1">
                         Salvar esta assinatura como padrão para <strong>{user?.nome?.split(' ')[0]}</strong>
@@ -432,8 +425,8 @@ export default function ModalRetiradaProfissional({
         </div>
 
         <div className="bg-gray-50 p-6 rounded-b-lg flex justify-end gap-3">
-          <button onClick={onClose} className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100" disabled={loading}>Cancelar</button>
-          <button onClick={handleConfirmar} disabled={loading} className="flex items-center gap-2 px-6 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:bg-gray-400">
+          <button onClick={onClose} className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-all" disabled={loading}>Cancelar</button>
+          <button onClick={handleConfirmar} disabled={loading} className="flex items-center gap-2 px-6 py-2 bg-[#057321] text-white rounded-lg hover:bg-[#046119] disabled:bg-gray-400 transition-all">
             <Save size={20} />
             {loading ? "Processando..." : "Confirmar Retirada"}
           </button>
@@ -442,3 +435,4 @@ export default function ModalRetiradaProfissional({
     </div>
   );
 }
+
