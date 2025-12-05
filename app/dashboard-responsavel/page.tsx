@@ -25,7 +25,9 @@ import {
   Link as LinkIcon,
   MessageSquare,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Monitor,       // Novo ícone para WEB
+  Smartphone     // Novo ícone para CELULAR
 } from "lucide-react";
 import GerarFolder from "@/components/GerarFolder";
 import { db } from "@/app/lib/firebase";
@@ -37,10 +39,10 @@ function DashboardResponsavel() {
   const router = useRouter();
   const { user, logout } = useAuth();
 
+  // INTERNAMENTE: 'original' = WEB | 'linha' = CELULAR
   const [layoutMode, setLayoutMode] = useState<'original' | 'colunas' | 'linha'>('original');
   const [isMounted, setIsMounted] = useState(false);
   
-  // Estado para controlar a visibilidade da barra de cadastros
   const [isCadastrosOpen, setIsCadastrosOpen] = useState(false);
 
   const [stats, setStats] = useState({
@@ -52,11 +54,22 @@ function DashboardResponsavel() {
 
   const [showInfo, setShowInfo] = useState(true);
 
+  // --- LÓGICA INTELIGENTE DE DETECÇÃO DE DISPOSITIVO ---
   useEffect(() => {
     const savedLayout = localStorage.getItem("layout_pref_responsavel");
+    
     if (savedLayout === 'original' || savedLayout === 'colunas' || savedLayout === 'linha') {
+      // 1. Se o usuário já tem preferência salva, respeita ela
       setLayoutMode(savedLayout);
+    } else {
+      // 2. Se NÃO tem preferência (primeiro acesso):
+      if (typeof window !== 'undefined' && window.innerWidth < 768) {
+        setLayoutMode('linha');    // <--- CELULAR (Tela pequena ativa modo Celular)
+      } else {
+        setLayoutMode('original'); // <--- WEB (Tela grande ativa modo Web)
+      }
     }
+    
     setIsMounted(true);
 
     if (user?.condominioId) carregarEstatisticas();
@@ -151,17 +164,10 @@ function DashboardResponsavel() {
         <div className="flex flex-col xl:flex-row items-center justify-between gap-4 mb-6 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
             <div className="text-center sm:text-left w-full xl:w-auto">
                 <h1 className="text-2xl font-bold text-gray-900">👋 Bem-vindo, {user?.nome?.split(" ")[0]}!</h1>
-                <p className="text-gray-500 text-sm">Personalize a visualização do painel:</p>
+                <p className="text-gray-500 text-sm">Escolha o modo de visualização:</p>
             </div>
 
-            {/* 
-               ==========================================================================
-               STATS (Blocos, Moradores, Pendentes) - MODO GRID NO MOBILE (3 COLUNAS FIXAS)
-               ==========================================================================
-               - grid-cols-3: Força 3 colunas no mobile
-               - sm:flex: Volta ao normal no Desktop
-               - w-full: Garante que use a largura toda no mobile
-            */}
+            {/* STATS (Blocos, Moradores, Pendentes) - MODO GRID NO MOBILE */}
             <div className="grid grid-cols-3 sm:flex w-full sm:w-auto bg-gray-100 rounded-lg p-1 shadow-inner gap-1">
                 
                 {/* Blocos */}
@@ -193,25 +199,30 @@ function DashboardResponsavel() {
 
             </div>
 
-            {/* Botões de Layout (Direita) */}
+            {/* Botões de Layout (Direita) - RENOMEADOS PARA WEB E CELULAR */}
             <div className="flex w-full sm:w-auto justify-center sm:justify-start bg-gray-100 rounded-lg p-1 shadow-inner">
                 <button 
                 onClick={() => changeLayout('original')} 
                 className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-all text-sm font-medium ${layoutMode === 'original' ? 'bg-white text-[#057321] shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                title="Visualização ideal para Computadores"
                 >
-                <LayoutTemplate size={18} /> <span className="hidden sm:inline">Padrão</span><span className="sm:hidden">Padrão</span>
+                <Monitor size={18} /> <span className="hidden sm:inline">WEB</span><span className="sm:hidden">WEB</span>
                 </button>
+
                 <button 
                 onClick={() => changeLayout('colunas')} 
                 className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-all text-sm font-medium ${layoutMode === 'colunas' ? 'bg-white text-[#057321] shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                title="Visualização em duas colunas"
                 >
                 <Columns size={18} /> <span className="hidden sm:inline">Colunas</span><span className="sm:hidden">Colunas</span>
                 </button>
+                
                 <button 
                 onClick={() => changeLayout('linha')} 
                 className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-all text-sm font-medium ${layoutMode === 'linha' ? 'bg-white text-[#057321] shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                title="Visualização ideal para Celulares"
                 >
-                <ListVideo size={18} /> <span className="hidden sm:inline">Linha</span><span className="sm:hidden">Linha</span>
+                <Smartphone size={18} /> <span className="hidden sm:inline">CELULAR</span><span className="sm:hidden">CELULAR</span>
                 </button>
             </div>
         </div>
@@ -241,7 +252,7 @@ function DashboardResponsavel() {
         )}
 
         {/* ===================================================================================== */}
-        {/* LAYOUT 1: ORIGINAL */}
+        {/* LAYOUT 1: WEB (ANTIGO ORIGINAL) */}
         {/* ===================================================================================== */}
         {layoutMode === 'original' && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
@@ -323,12 +334,12 @@ function DashboardResponsavel() {
         )}
 
         {/* ===================================================================================== */}
-        {/* LAYOUT 3: LINHA ÚNICA */}
+        {/* LAYOUT 3: CELULAR (ANTIGO LINHA) */}
         {/* ===================================================================================== */}
         {layoutMode === 'linha' && (
             <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mb-8">
                 <button onClick={() => router.push("/dashboard-responsavel/nova-correspondencia")} className="aspect-square flex flex-col items-center justify-center gap-2 p-2 bg-gradient-to-r from-[#057321] to-[#046119] text-white rounded-2xl hover:from-[#046119] hover:to-[#035218] transition-all font-bold shadow-md">
-                    <Plus size={32} /> <span className="text-center text-xs leading-tight">Nova<br />Entrega</span>
+                    <Plus size={32} /> <span className="text-center text-xs leading-tight">Novo<br />Aviso</span>
                 </button>
                 <button onClick={() => router.push("/dashboard-responsavel/avisos-rapidos")} className="aspect-square flex flex-col items-center justify-center gap-2 p-2 bg-gradient-to-r from-[#057321] to-[#046119] text-white rounded-2xl hover:from-[#046119] hover:to-[#035218] transition-all font-bold shadow-md">
                     <Zap size={32} /> <span className="text-center text-xs">Avisos<br/>Rápidos</span>
@@ -434,5 +445,3 @@ function DashboardResponsavel() {
 }
 
 export default withAuth(DashboardResponsavel, ["responsavel", "admin", "adminMaster"]);
-
-

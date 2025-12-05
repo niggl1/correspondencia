@@ -119,7 +119,7 @@ function AvisosRapidosPage() {
   const [enviando, setEnviando] = useState(false);
   const [protocoloGerado, setProtocoloGerado] = useState("");
 
-  // ✅ Overlay padrão (igual Nova Correspondência)
+  // ✅ Overlay padrão
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState("Processando...");
@@ -324,7 +324,6 @@ Aguardamos a sua retirada`;
     setModalEnvioAberto(true);
   };
 
-  // ✅ Overlay centralizado (padrão) e abre WhatsApp só no final (sem tela branca)
   const confirmarEnvio = async () => {
     if (!moradorParaEnvio) return;
 
@@ -347,7 +346,6 @@ Aguardamos a sua retirada`;
 
       let publicFotoUrl = "";
 
-      // 1) Upload da Foto (se tiver)
       if (imagemAviso) {
         setProgress(35);
         setMessage("Processando imagem...");
@@ -362,7 +360,6 @@ Aguardamos a sua retirada`;
         publicFotoUrl = await getDownloadURL(storageRef);
       }
 
-      // 2) Registrar aviso
       setProgress(70);
       setMessage("Salvando no sistema...");
 
@@ -382,7 +379,6 @@ Aguardamos a sua retirada`;
         fotoUrl: publicFotoUrl,
       });
 
-      // 3) Montar WhatsApp link
       setProgress(85);
       setMessage("Gerando link do WhatsApp...");
 
@@ -398,11 +394,9 @@ Aguardamos a sua retirada`;
 
       const whatsappLink = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(mensagemFinal)}`;
 
-      // 4) Finaliza overlay e abre WhatsApp
       setProgress(100);
       setMessage("Abrindo WhatsApp...");
 
-      // ✅ abre só aqui => NÃO existe “aba branca”
       window.open(whatsappLink, "_blank");
 
       setSucesso(`Aviso enviado para ${moradorParaEnvio.nome}!`);
@@ -436,11 +430,13 @@ Aguardamos a sua retirada`;
     return m.nome.toLowerCase().includes(busca) || m.apartamento.toLowerCase().includes(busca);
   });
 
+  // 👇 AQUI ESTÁ A ALTERAÇÃO DO LAYOUT DO CARD 👇
   const renderCardMorador = (morador: Morador) => (
     <button
       key={morador.id}
       onClick={() => prepararEnvio(morador)}
-      className="bg-gradient-to-r from-green-50 to-emerald-50 hover:from-green-100 hover:to-emerald-100 border-2 border-green-200 hover:border-[#057321] rounded-xl p-4 transition-all text-left shadow-sm hover:shadow-md group w-full"
+      // Fundo Branco (bg-white), Borda Verde (border-[#057321])
+      className="bg-white border border-[#057321] rounded-xl p-4 transition-all text-left shadow-sm hover:shadow-md group w-full hover:bg-gray-50"
       disabled={enviando}
     >
       <div className="flex items-start gap-3">
@@ -450,7 +446,8 @@ Aguardamos a sua retirada`;
         <div className="flex-1 min-w-0">
           <div className="flex flex-col mb-1">
             {morador.blocoNome ? (
-              <span className="text-xs font-bold text-[#057321] uppercase bg-green-100 px-2 py-0.5 rounded w-fit mb-1">
+              // Removido o fundo verde (bg-green-100) do nome do bloco
+              <span className="text-xs font-bold text-[#057321] uppercase w-fit mb-1">
                 Bloco {morador.blocoNome}
               </span>
             ) : (
@@ -486,7 +483,6 @@ Aguardamos a sua retirada`;
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-green-50/30">
       <Navbar />
 
-      {/* ✅ Overlay centralizado, padrão do sistema */}
       <LoadingOverlay isVisible={loading} progress={progress} message={message} />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pt-24">

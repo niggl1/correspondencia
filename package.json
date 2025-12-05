@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "build:app": "set BUILD_TARGET=app&& next build",
+    "build:mobile": "cross-env BUILD_TARGET=app next build && npx cap sync",
     "typecheck": "tsc --noEmit",
     "verify": "node scripts/verify-project.mjs"
   },
@@ -41,6 +41,7 @@
     "@types/react": "18.2.48",
     "@types/react-dom": "18.2.18",
     "autoprefixer": "10.4.20",
+    "cross-env": "^10.1.0",
     "dotenv": "^17.2.3",
     "eslint": "8.57.0",
     "eslint-config-next": "14.2.5",
