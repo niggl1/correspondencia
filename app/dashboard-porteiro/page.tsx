@@ -2,14 +2,23 @@
 
 import { useRouter } from "next/navigation";
 import withAuth from "@/components/withAuth";
-import { Package, Send, ClipboardCheck, Zap } from "lucide-react";
+import { Package, Send, ClipboardCheck, Zap, HelpCircle } from "lucide-react"; // Importei HelpCircle
 import Navbar from "@/components/Navbar";
+import TutorialGuide from "@/components/TutorialGuide";
 
 function PorteiroPage() {
   const router = useRouter();
 
+  // Função para reiniciar o tutorial
+  const reiniciarTutorial = () => {
+    // Remove a chave do localStorage que marca o tutorial como visto
+    localStorage.removeItem("tutorial_porteiro_v2");
+    // Recarrega a página para o tutorial abrir novamente
+    window.location.reload();
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 relative">
       
       {/* 1. Navbar Fixa */}
       <Navbar />
@@ -17,7 +26,8 @@ function PorteiroPage() {
       {/* 2. Espaçamento Ajustado */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-12">
         
-        <div className="mb-8">
+        {/* ID: intro-painel */}
+        <div id="intro-painel" className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
             Painel do Porteiro
           </h1>
@@ -31,6 +41,7 @@ function PorteiroPage() {
           
           {/* 1. Nova Correspondência */}
           <button
+            id="btn-nova-correspondencia"
             onClick={() => router.push("/dashboard-porteiro/nova-correspondencia")}
             className="bg-[#057321] p-8 rounded-xl shadow-md hover:shadow-lg hover:bg-[#046119] transition-all duration-200"
           >
@@ -49,8 +60,9 @@ function PorteiroPage() {
             </div>
           </button>
 
-          {/* 2. Avisos Rápidos (TROCA FEITA AQUI) */}
+          {/* 2. Avisos Rápidos */}
           <button
+            id="btn-avisos-rapidos"
             onClick={() => router.push("/dashboard-porteiro/avisos-rapidos")}
             className="bg-[#057321] p-8 rounded-xl shadow-md hover:shadow-lg hover:bg-[#046119] transition-all duration-200"
           >
@@ -71,6 +83,7 @@ function PorteiroPage() {
 
           {/* 3. Avisos Enviados */}
           <button
+            id="btn-avisos-enviados"
             onClick={() => router.push("/dashboard-porteiro/correspondencias")}
             className="bg-[#057321] p-8 rounded-xl shadow-md hover:shadow-lg hover:bg-[#046119] transition-all duration-200"
           >
@@ -89,8 +102,9 @@ function PorteiroPage() {
             </div>
           </button>
 
-          {/* 4. Registrar Retirada (TROCA FEITA AQUI) */}
+          {/* 4. Registrar Retirada */}
           <button
+            id="btn-registrar-retirada"
             onClick={() => router.push("/dashboard-porteiro/registrar-retirada")}
             className="bg-[#057321] p-8 rounded-xl shadow-md hover:shadow-lg hover:bg-[#046119] transition-all duration-200"
           >
@@ -111,6 +125,58 @@ function PorteiroPage() {
 
         </div>
       </main>
+
+      {/* BOTÃO PARA REINICIAR O TUTORIAL */}
+      <button
+        onClick={reiniciarTutorial}
+        className="fixed bottom-6 right-6 bg-blue-600 text-white p-3 rounded-full shadow-lg hover:bg-blue-700 transition-all z-50 flex items-center justify-center"
+        title="Reiniciar Tutorial"
+      >
+        <HelpCircle size={28} />
+      </button>
+
+      {/* 👇 TUTORIAL AQUI 👇 */}
+      <TutorialGuide 
+        chaveLocalStorage="tutorial_porteiro_v2"
+        passos={[
+          { 
+            element: '#intro-painel', 
+            popover: { 
+              title: 'Painel do Porteiro', 
+              description: 'A portaria poderá enviar avisos aos moradores com foto, QR Code e protocolo, além de registrar retiradas de correspondência com identificação e assinatura digital.' 
+            } 
+          },
+          { 
+            element: '#btn-nova-correspondencia', 
+            popover: { 
+              title: 'Nova Correspondência', 
+              description: 'Aviso completo com imagem, QR Code, protocolo e informações do porteiro remetente e do morador de destino.' 
+            } 
+          },
+          { 
+            element: '#btn-avisos-rapidos', 
+            popover: { 
+              title: 'Avisos Rápidos', 
+              description: 'Envio de avisos simplificados, contendo apenas a foto e o protocolo da correspondência.' 
+            } 
+          },
+          { 
+            element: '#btn-avisos-enviados', 
+            popover: { 
+              title: 'Avisos Enviados', 
+              description: 'Histórico de avisos enviados, com opção de gerar segunda via da notificação e do recibo de retirada.' 
+            } 
+          },
+          { 
+            element: '#btn-registrar-retirada', 
+            popover: { 
+              title: 'Registrar Retirada', 
+              description: 'Registre a retirada com os dados e assinatura de quem recebeu. O sistema gera um comprovante físico ou digital.' 
+            } 
+          },
+        ]}
+      />
+
     </div>
   );
 }

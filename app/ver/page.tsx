@@ -1,15 +1,16 @@
 "use client";
 
 import { useEffect, useState, Suspense } from "react";
-import { useParams } from "next/navigation";
+import { useSearchParams } from "next/navigation"; // ALTERADO: useParams -> useSearchParams
 import { db } from "@/app/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
 import { Loader2, FileX, CheckCircle, Image as ImageIcon } from "lucide-react";
 
 function VerReciboContent() {
-  // Correção: Para URLs como /ver/CODIGO, usamos useParams e não useSearchParams
-  const params = useParams();
-  const id = params?.id as string;
+  // --- CORREÇÃO AQUI ---
+  // A URL é /ver?id=XYZ, então usamos useSearchParams para pegar o "?id="
+  const searchParams = useSearchParams();
+  const id = searchParams.get("id"); 
 
   const [loading, setLoading] = useState(true);
   const [dados, setDados] = useState<any>(null);
@@ -25,7 +26,7 @@ function VerReciboContent() {
 
     const buscarRecibo = async () => {
       try {
-        // 1. Tenta buscar na coleção de AVISOS (onde Avisos Rápidos salvam)
+        // 1. Tenta buscar na coleção de AVISOS
         let docRef = doc(db, "avisos", id);
         let docSnap = await getDoc(docRef);
 
@@ -38,7 +39,7 @@ function VerReciboContent() {
         if (docSnap.exists()) {
           const data = docSnap.data();
           
-          // Prioriza fotoUrl (Avisos), depois tenta outros campos (Correspondências)
+          // Prioriza fotoUrl, depois tenta outros campos
           const urlArquivo = data.fotoUrl || data.reciboUrl || data.dadosRetirada?.reciboUrl || data.pdfUrl;
 
           if (urlArquivo) {

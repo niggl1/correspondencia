@@ -2,7 +2,15 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Edit2, Trash2, UserCheck, UserX, Upload } from "lucide-react";
+import {
+  Edit2,
+  Trash2,
+  UserCheck,
+  UserX,
+  Upload,
+  FileText,
+  FileSpreadsheet,
+} from "lucide-react";
 import { db, auth } from "@/app/lib/firebase";
 import { onAuthStateChanged, createUserWithEmailAndPassword } from "firebase/auth";
 import {
@@ -20,14 +28,14 @@ import {
   getDoc,
 } from "firebase/firestore";
 
-// ✅ NAVBAR (mesmo padrão dos outros arquivos)
-// Ajuste o caminho se no seu projeto estiver diferente.
-import Navbar from "@/components/Navbar";
+// Bibliotecas de Exportação
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import * as XLSX from "xlsx";
 
-// ✅ BOTÃO VOLTAR PADRONIZADO
+import Navbar from "@/components/Navbar";
 import BotaoVoltar from "@/components/BotaoVoltar";
 
-// Interface para Props
 interface Props {
   condominioId?: string;
 }
@@ -83,9 +91,10 @@ export default function GerenciarMoradores({ condominioId: adminCondominioId }: 
 
   const [modalImportacao, setModalImportacao] = useState(false);
 
-  // Filtros
+  // --- FILTROS ---
   const [busca, setBusca] = useState("");
   const [filtroPerfil, setFiltroPerfil] = useState("todos");
+  const [filtroBlocoId, setFiltroBlocoId] = useState("todos");
   const [filtroUnidadeId, setFiltroUnidadeId] = useState("todos");
 
   // Formulário
@@ -104,12 +113,8 @@ export default function GerenciarMoradores({ condominioId: adminCondominioId }: 
   const [userCondominioId, setUserCondominioId] = useState("");
   const [userRole, setUserRole] = useState("");
 
-  // Define qual ID usar
   const targetCondominioId = adminCondominioId || userCondominioId;
-
-  // ✅ rota de volta padronizada por role (igual ao arquivo de blocos)
-  const backRoute =
-    userRole === "porteiro" ? "/dashboard-porteiro" : "/dashboard-responsavel";
+  const backRoute = userRole === "porteiro" ? "/dashboard-porteiro" : "/dashboard-responsavel";
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -230,14 +235,14 @@ export default function GerenciarMoradores({ condominioId: adminCondominioId }: 
     if (morador.blocoId) {
       blocoIdRestaurado = morador.blocoId;
     } else {
-      const unidadeVinculada = unidades.find(u => u.id === morador.unidadeId);
+      const unidadeVinculada = unidades.find((u) => u.id === morador.unidadeId);
       if (unidadeVinculada && unidadeVinculada.blocoId) {
         blocoIdRestaurado = unidadeVinculada.blocoId;
       }
     }
     setBlocoSelecionado(blocoIdRestaurado);
 
-    const unidadeVinculada = unidades.find(u => u.id === morador.unidadeId);
+    const unidadeVinculada = unidades.find((u) => u.id === morador.unidadeId);
     if (unidadeVinculada) {
       setNumeroApartamento(unidadeVinculada.identificacao);
     } else {
@@ -256,19 +261,37 @@ export default function GerenciarMoradores({ condominioId: adminCondominioId }: 
 
   const salvarMorador = async () => {
     if (!targetCondominioId) return;
-    if (!nome.trim()) { alert("Nome é obrigatório"); return; }
-    if (!email.trim()) { alert("Email é obrigatório"); return; }
-    if (!whatsapp.trim()) { alert("WhatsApp é obrigatório"); return; }
-    if (!blocoSelecionado) { alert("Selecione um Bloco"); return; }
-    if (!numeroApartamento) { alert("Digite o número do apartamento"); return; }
-    if (!modoEdicao && !senha.trim()) { alert("Senha é obrigatória"); return; }
+    if (!nome.trim()) {
+      alert("Nome é obrigatório");
+      return;
+    }
+    if (!email.trim()) {
+      alert("Email é obrigatório");
+      return;
+    }
+    if (!whatsapp.trim()) {
+      alert("WhatsApp é obrigatório");
+      return;
+    }
+    if (!blocoSelecionado) {
+      alert("Selecione um Bloco");
+      return;
+    }
+    if (!numeroApartamento) {
+      alert("Digite o número do apartamento");
+      return;
+    }
+    if (!modoEdicao && !senha.trim()) {
+      alert("Senha é obrigatória");
+      return;
+    }
 
     try {
       setLoading(true);
 
       let unidadeIdFinal = "";
       const unidadeExistente = unidades.find(
-        u => u.blocoId === blocoSelecionado && u.identificacao === numeroApartamento
+        (u) => u.blocoId === blocoSelecionado && u.identificacao === numeroApartamento
       );
 
       const blocoObj = blocos.find((b) => b.id === blocoSelecionado);
@@ -285,17 +308,20 @@ export default function GerenciarMoradores({ condominioId: adminCondominioId }: 
           condominioId: targetCondominioId,
           status: "ocupado",
           proprietario: nome,
-          criadoEm: serverTimestamp()
+          criadoEm: serverTimestamp(),
         });
         unidadeIdFinal = novaUnidadeRef.id;
 
-        setUnidades(prev => [...prev, {
-          id: unidadeIdFinal,
-          identificacao: numeroApartamento,
-          tipo: "apartamento",
-          blocoSetor: nomeDoBloco,
-          blocoId: blocoSelecionado
-        } as Unidade]);
+        setUnidades((prev) => [
+          ...prev,
+          {
+            id: unidadeIdFinal,
+            identificacao: numeroApartamento,
+            tipo: "apartamento",
+            blocoSetor: nomeDoBloco,
+            blocoId: blocoSelecionado,
+          } as Unidade,
+        ]);
       }
 
       const dadosMorador: any = {
@@ -334,7 +360,6 @@ export default function GerenciarMoradores({ condominioId: adminCondominioId }: 
       setModalAberto(false);
       carregarMoradores();
       if (!unidadeExistente) carregarUnidades();
-
     } catch (err) {
       console.error("Erro ao salvar morador:", err);
       alert("Erro ao salvar. Verifique os dados.");
@@ -370,15 +395,80 @@ export default function GerenciarMoradores({ condominioId: adminCondominioId }: 
     return unidade ? unidade.identificacao : "-";
   };
 
+  const getNomePerfil = (valor: string) => {
+    return PERFIS_MORADOR.find((p) => p.value === valor)?.label || valor;
+  };
+
+  // --- LÓGICA DE FILTRAGEM ---
   const moradoresFiltrados = moradores.filter((morador) => {
     const matchBusca =
       morador.nome.toLowerCase().includes(busca.toLowerCase()) ||
       morador.email.toLowerCase().includes(busca.toLowerCase()) ||
       morador.whatsapp.includes(busca);
+
     const matchPerfil = filtroPerfil === "todos" || morador.perfil === filtroPerfil;
+    const matchBloco = filtroBlocoId === "todos" || morador.blocoId === filtroBlocoId;
     const matchUnidade = filtroUnidadeId === "todos" || morador.unidadeId === filtroUnidadeId;
-    return matchBusca && matchPerfil && matchUnidade;
+
+    return matchBusca && matchPerfil && matchBloco && matchUnidade;
   });
+
+  const unidadesParaFiltro =
+    filtroBlocoId === "todos" ? unidades : unidades.filter((u) => u.blocoId === filtroBlocoId);
+
+  // --- EXPORTAÇÃO ---
+  const gerarPDF = () => {
+    const doc = new jsPDF();
+    doc.text("Relatório de Moradores", 14, 10);
+
+    // Informações do Filtro no PDF
+    let subtitulo = "Filtro: ";
+    if (filtroBlocoId !== "todos") {
+      const nomeB = blocos.find((b) => b.id === filtroBlocoId)?.nome;
+      subtitulo += `Bloco ${nomeB || ""} `;
+    } else {
+      subtitulo += "Todos os Blocos ";
+    }
+    doc.setFontSize(10);
+    doc.text(subtitulo, 14, 16);
+
+    const tabelaDados = moradoresFiltrados.map((m) => [
+      m.nome,
+      m.email,
+      m.whatsapp,
+      getNomePerfil(m.perfil),
+      m.blocoNome || m.bloco || "-",
+      getNomeUnidade(m.unidadeId),
+      m.ativo ? "Ativo" : "Inativo",
+    ]);
+
+    autoTable(doc, {
+      head: [["Nome", "Email", "WhatsApp", "Perfil", "Bloco", "Unidade", "Status"]],
+      body: tabelaDados,
+      startY: 20,
+    });
+
+    doc.save("moradores.pdf");
+  };
+
+  const gerarExcel = () => {
+    const dadosExcel = moradoresFiltrados.map((m) => ({
+      Nome: m.nome,
+      Email: m.email,
+      WhatsApp: m.whatsapp,
+      Perfil: getNomePerfil(m.perfil),
+      Bloco: m.blocoNome || m.bloco || "-",
+      Unidade: getNomeUnidade(m.unidadeId),
+      Status: m.ativo ? "Ativo" : "Inativo",
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(dadosExcel);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Moradores");
+    XLSX.writeFile(workbook, "moradores.xlsx");
+  };
+
+  // ----------------------------------------
 
   if (!authChecked || loading) {
     return (
@@ -397,41 +487,60 @@ export default function GerenciarMoradores({ condominioId: adminCondominioId }: 
 
   return (
     <>
-      {/* ✅ Navbar no topo */}
       <Navbar />
 
-      {/* ✅ Conteúdo respeitando altura da navbar fixa */}
       <div className="space-y-6 bg-gray-50 min-h-screen p-4 sm:p-6 pt-24 sm:pt-28 rounded-xl">
-
-        {/* ✅ Botão voltar à esquerda */}
         <div className="w-fit">
           <BotaoVoltar url={backRoute} />
         </div>
 
         {/* Header */}
-        <div className="bg-white p-6 rounded-xl shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="bg-white p-6 rounded-xl shadow-sm flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Gerenciar Moradores</h1>
             <p className="text-gray-600 text-sm">Cadastre moradores e vincule às unidades</p>
           </div>
-          <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+
+          {/* Botões de Ação */}
+          <div className="grid grid-cols-2 sm:flex sm:flex-row gap-2 w-full xl:w-auto">
+            <button
+              onClick={gerarPDF}
+              className="flex items-center justify-center gap-2 px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-bold shadow-sm transition-colors"
+              title="Gerar PDF"
+            >
+              <FileText size={18} />
+              <span className="hidden sm:inline">PDF</span>
+            </button>
+
+            <button
+              onClick={gerarExcel}
+              className="flex items-center justify-center gap-2 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-bold shadow-sm transition-colors"
+              title="Gerar Excel"
+            >
+              <FileSpreadsheet size={18} />
+              <span className="hidden sm:inline">Excel</span>
+            </button>
+
             <button
               onClick={() => setModalImportacao(true)}
-              className="px-4 py-3 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium text-center flex items-center justify-center gap-2 shadow-sm"
+              className="flex items-center justify-center gap-2 px-4 py-3 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium shadow-sm"
             >
-              <Upload size={18} /> Importar Excel
+              <Upload size={18} />
+              <span className="hidden sm:inline">Importar</span>
             </button>
+
             <button
               onClick={abrirModalNovo}
-              className="px-4 py-3 bg-[#057321] text-white rounded-lg hover:bg-[#046119] flex items-center justify-center gap-2 font-bold shadow-sm transition-colors"
+              className="col-span-2 sm:col-span-1 flex items-center justify-center gap-2 px-6 py-3 bg-[#057321] text-white rounded-lg hover:bg-[#046119] font-bold shadow-sm transition-colors"
             >
-              <span className="text-xl">+</span> Novo Morador
+              <span className="text-xl">+</span> Novo
             </button>
           </div>
         </div>
 
-        {/* Filtros */}
-        <div className="bg-white p-6 rounded-xl shadow-sm grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* --- FILTROS --- */}
+        <div className="bg-white p-6 rounded-xl shadow-sm grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* 1. Busca */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Buscar Morador</label>
             <input
@@ -439,33 +548,59 @@ export default function GerenciarMoradores({ condominioId: adminCondominioId }: 
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
               className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-green-500 focus:outline-none"
-              placeholder="Nome, email ou WhatsApp..."
+              placeholder="Nome, email..."
             />
           </div>
+
+          {/* 2. Perfil */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Filtrar por Perfil</label>
             <select
               value={filtroPerfil}
               onChange={(e) => setFiltroPerfil(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-green-500 focus:outline-none"
+              className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-green-500 focus:outline-none bg-white"
             >
               <option value="todos">Todos</option>
               {PERFIS_MORADOR.map((p) => (
-                <option key={p.value} value={p.value}>{p.label}</option>
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
               ))}
             </select>
           </div>
+
+          {/* 3. Bloco */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Filtrar por Bloco</label>
+            <select
+              value={filtroBlocoId}
+              onChange={(e) => {
+                setFiltroBlocoId(e.target.value);
+                setFiltroUnidadeId("todos");
+              }}
+              className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-green-500 focus:outline-none bg-white"
+            >
+              <option value="todos">Todos os Blocos</option>
+              {blocos.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.nome}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* 4. Unidade */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Filtrar por Unidade</label>
             <select
               value={filtroUnidadeId}
               onChange={(e) => setFiltroUnidadeId(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-green-500 focus:outline-none"
+              className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-green-500 focus:outline-none bg-white"
             >
-              <option value="todos">Todas</option>
-              {unidades.map((u) => (
+              <option value="todos">Todas as Unidades</option>
+              {unidadesParaFiltro.map((u) => (
                 <option key={u.id} value={u.id}>
-                  {u.identificacao} - {u.blocoSetor}
+                  {u.identificacao} {filtroBlocoId === "todos" ? `- ${u.blocoSetor}` : ""}
                 </option>
               ))}
             </select>
@@ -475,43 +610,69 @@ export default function GerenciarMoradores({ condominioId: adminCondominioId }: 
         {/* Lista Mobile */}
         <div className="md:hidden space-y-4">
           {moradoresFiltrados.length === 0 ? (
-            <div className="text-center p-8 bg-white rounded-xl text-gray-500">Nenhum morador encontrado</div>
+            <div className="text-center p-8 bg-white rounded-xl text-gray-500">
+              Nenhum morador encontrado
+            </div>
           ) : (
             moradoresFiltrados.map((morador) => (
-              <div key={morador.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col gap-3">
+              <div
+                key={morador.id}
+                className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col gap-3"
+              >
                 <div className="flex justify-between items-start">
                   <div>
                     <h3 className="font-bold text-gray-900 text-lg">{morador.nome}</h3>
                     <p className="text-sm text-gray-500">{morador.email}</p>
                   </div>
-                  <span className={`px-2 py-1 text-xs font-bold rounded-full ${morador.ativo ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"}`}>
+                  <span
+                    className={`px-2 py-1 text-xs font-bold rounded-full ${
+                      morador.ativo ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"
+                    }`}
+                  >
                     {morador.ativo ? "Ativo" : "Inativo"}
                   </span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 text-sm text-gray-700 bg-gray-50 p-3 rounded-lg">
                   <div>
-                    <span className="block text-xs text-gray-400 uppercase font-bold">Bloco/Apto</span>
-                    <span className="font-medium">
-                      {morador.blocoNome || morador.bloco || "-"} / {getNomeUnidade(morador.unidadeId)}
-                    </span>
+                    <span className="block text-xs text-gray-400 uppercase font-bold">Bloco</span>
+                    <span className="font-medium">{morador.blocoNome || morador.bloco || "-"}</span>
                   </div>
                   <div>
+                    <span className="block text-xs text-gray-400 uppercase font-bold">Unidade</span>
+                    <span className="font-medium">{getNomeUnidade(morador.unidadeId)}</span>
+                  </div>
+                  <div className="col-span-2">
                     <span className="block text-xs text-gray-400 uppercase font-bold">Perfil</span>
                     <span>{PERFIS_MORADOR.find((p) => p.value === morador.perfil)?.label || "-"}</span>
                   </div>
                 </div>
 
                 <div className="flex gap-2 mt-1">
-                  <button onClick={() => abrirModalEditar(morador)} className="flex-1 flex items-center justify-center gap-2 p-2 bg-blue-50 text-blue-700 rounded-lg font-medium hover:bg-blue-100">
+                  <button
+                    onClick={() => abrirModalEditar(morador)}
+                    className="flex-1 flex items-center justify-center gap-2 p-2 bg-blue-50 text-blue-700 rounded-lg font-medium hover:bg-blue-100"
+                  >
                     <Edit2 size={16} /> Editar
                   </button>
-                  <button onClick={() => alternarStatus(morador)} className={`flex-1 flex items-center justify-center gap-2 p-2 rounded-lg font-medium ${morador.ativo ? "bg-yellow-50 text-yellow-700 hover:bg-yellow-100" : "bg-green-50 text-green-700 hover:bg-green-100"}`}>
+
+                  <button
+                    onClick={() => alternarStatus(morador)}
+                    className={`flex-1 flex items-center justify-center gap-2 p-2 rounded-lg font-medium ${
+                      morador.ativo
+                        ? "bg-yellow-50 text-yellow-700 hover:bg-yellow-100"
+                        : "bg-green-50 text-green-700 hover:bg-green-100"
+                    }`}
+                  >
                     {morador.ativo ? <UserX size={16} /> : <UserCheck size={16} />}
                     {morador.ativo ? "Desativar" : "Ativar"}
                   </button>
-                  <button onClick={() => excluirMorador(morador)} className="flex items-center justify-center p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100">
-                    <Trash2 size={18} />
+
+                  <button
+                    onClick={() => excluirMorador(morador)}
+                    className="flex items-center justify-center p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"
+                  >
+                    <Trash2 size={16} />
                   </button>
                 </div>
               </div>
@@ -525,19 +686,38 @@ export default function GerenciarMoradores({ condominioId: adminCondominioId }: 
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Nome</th>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Email</th>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">WhatsApp</th>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Perfil</th>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Unidade</th>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Ações</th>
+                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                    Nome
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                    Email
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                    WhatsApp
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                    Perfil
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                    Bloco
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                    Unidade
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                    Ações
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {moradoresFiltrados.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-8 text-center text-gray-500">Nenhum morador encontrado</td>
+                    <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
+                      Nenhum morador encontrado
+                    </td>
                   </tr>
                 ) : (
                   moradoresFiltrados.map((morador) => (
@@ -550,23 +730,36 @@ export default function GerenciarMoradores({ condominioId: adminCondominioId }: 
                           {PERFIS_MORADOR.find((p) => p.value === morador.perfil)?.label || "-"}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-gray-600">
-                        {getNomeUnidade(morador.unidadeId)}{" "}
-                        {morador.blocoNome && (
-                          <span className="text-xs text-gray-400 ml-1">({morador.blocoNome})</span>
-                        )}
-                      </td>
+                      <td className="px-6 py-4 text-gray-600">{morador.blocoNome || morador.bloco || "-"}</td>
+                      <td className="px-6 py-4 text-gray-600">{getNomeUnidade(morador.unidadeId)}</td>
                       <td className="px-6 py-4">
-                        <span className={`px-2.5 py-0.5 inline-flex text-xs font-bold rounded-full ${morador.ativo ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"}`}>
+                        <span
+                          className={`px-2.5 py-0.5 inline-flex text-xs font-bold rounded-full ${
+                            morador.ativo ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"
+                          }`}
+                        >
                           {morador.ativo ? "Ativo" : "Inativo"}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                        <button onClick={() => abrirModalEditar(morador)} className="text-blue-600 hover:text-blue-900 font-bold">Editar</button>
-                        <button onClick={() => alternarStatus(morador)} className="text-yellow-600 hover:text-yellow-900 font-bold">
+                        <button
+                          onClick={() => abrirModalEditar(morador)}
+                          className="text-blue-600 hover:text-blue-900 font-bold"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          onClick={() => alternarStatus(morador)}
+                          className="text-yellow-600 hover:text-yellow-900 font-bold"
+                        >
                           {morador.ativo ? "Desativar" : "Ativar"}
                         </button>
-                        <button onClick={() => excluirMorador(morador)} className="text-red-600 hover:text-red-900 font-bold">Excluir</button>
+                        <button
+                          onClick={() => excluirMorador(morador)}
+                          className="text-red-600 hover:text-red-900 font-bold"
+                        >
+                          Excluir
+                        </button>
                       </td>
                     </tr>
                   ))
@@ -582,45 +775,93 @@ export default function GerenciarMoradores({ condominioId: adminCondominioId }: 
             <div className="bg-white rounded-xl shadow-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-bold">{modoEdicao ? "Editar Morador" : "Novo Morador"}</h3>
-                <button onClick={() => setModalAberto(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+                <button onClick={() => setModalAberto(false)} className="text-gray-400 hover:text-gray-600">
+                  ✕
+                </button>
               </div>
 
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo *</label>
-                  <input type="text" value={nome} onChange={(e) => setNome(e.target.value)} className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-[#057321]" placeholder="João Silva" />
+                  <input
+                    type="text"
+                    value={nome}
+                    onChange={(e) => setNome(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-[#057321]"
+                    placeholder="João Silva"
+                  />
                 </div>
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
-                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-[#057321]" placeholder="joao@email.com" />
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-[#057321]"
+                    placeholder="joao@email.com"
+                  />
                 </div>
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">WhatsApp *</label>
-                  <input type="text" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-[#057321]" placeholder="81999999999" />
+                  <input
+                    type="text"
+                    value={whatsapp}
+                    onChange={(e) => setWhatsapp(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-[#057321]"
+                    placeholder="81999999999"
+                  />
                 </div>
+
                 {!modoEdicao && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Senha *</label>
-                    <input type="password" value={senha} onChange={(e) => setSenha(e.target.value)} className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-[#057321]" placeholder="Mínimo 6 caracteres" />
+                    <input
+                      type="password"
+                      value={senha}
+                      onChange={(e) => setSenha(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-[#057321]"
+                      placeholder="Mínimo 6 caracteres"
+                    />
                   </div>
                 )}
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Perfil *</label>
-                  <select value={perfil} onChange={(e) => setPerfil(e.target.value)} className="w-full border border-gray-300 rounded-lg px-4 py-2 bg-white">
-                    {PERFIS_MORADOR.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+                  <select
+                    value={perfil}
+                    onChange={(e) => setPerfil(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2 bg-white"
+                  >
+                    {PERFIS_MORADOR.map((p) => (
+                      <option key={p.value} value={p.value}>
+                        {p.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Bloco *</label>
-                  <select value={blocoSelecionado} onChange={(e) => setBlocoSelecionado(e.target.value)} className="w-full border border-gray-300 rounded-lg px-4 py-2 bg-white">
+                  <select
+                    value={blocoSelecionado}
+                    onChange={(e) => setBlocoSelecionado(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2 bg-white"
+                  >
                     <option value="">Selecione o bloco</option>
-                    {blocos.map((b) => <option key={b.id} value={b.id}>{b.nome}</option>)}
+                    {blocos.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.nome}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Número do Apartamento *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Número do Apartamento *
+                  </label>
                   <input
                     type="text"
                     inputMode="numeric"
@@ -635,17 +876,40 @@ export default function GerenciarMoradores({ condominioId: adminCondominioId }: 
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Complemento (Opcional)</label>
-                  <input type="text" value={complemento} onChange={(e) => setComplemento(e.target.value)} className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-[#057321]" placeholder="Ex: Fundos, Lado B..." />
+                  <input
+                    type="text"
+                    value={complemento}
+                    onChange={(e) => setComplemento(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-[#057321]"
+                    placeholder="Ex: Fundos, Lado B..."
+                  />
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <input type="checkbox" id="ativo" checked={!!ativo} onChange={(e) => setAtivo(e.target.checked)} className="w-4 h-4 text-[#057321] rounded focus:ring-2 focus:ring-[#057321]" />
-                  <label htmlFor="ativo" className="text-sm font-medium text-gray-700">Morador ativo</label>
+                  <input
+                    type="checkbox"
+                    id="ativo"
+                    checked={!!ativo}
+                    onChange={(e) => setAtivo(e.target.checked)}
+                    className="w-4 h-4 text-[#057321] rounded focus:ring-2 focus:ring-[#057321]"
+                  />
+                  <label htmlFor="ativo" className="text-sm font-medium text-gray-700">
+                    Morador ativo
+                  </label>
                 </div>
 
                 <div className="flex gap-3 mt-6">
-                  <button onClick={() => setModalAberto(false)} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Cancelar</button>
-                  <button onClick={salvarMorador} disabled={loading} className="flex-1 px-4 py-2 bg-[#057321] text-white rounded-lg hover:bg-[#046119] disabled:opacity-50">
+                  <button
+                    onClick={() => setModalAberto(false)}
+                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={salvarMorador}
+                    disabled={loading}
+                    className="flex-1 px-4 py-2 bg-[#057321] text-white rounded-lg hover:bg-[#046119] disabled:opacity-50"
+                  >
                     {loading ? "Salvando..." : "Salvar"}
                   </button>
                 </div>
@@ -659,7 +923,12 @@ export default function GerenciarMoradores({ condominioId: adminCondominioId }: 
             <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-sm">
               <h2 className="text-lg font-bold mb-4">Importação de Excel</h2>
               <p className="text-gray-600 mb-4">Funcionalidade em manutenção para o novo formato.</p>
-              <button onClick={() => setModalImportacao(false)} className="w-full px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 font-medium">Fechar</button>
+              <button
+                onClick={() => setModalImportacao(false)}
+                className="w-full px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 font-medium"
+              >
+                Fechar
+              </button>
             </div>
           </div>
         )}

@@ -15,10 +15,9 @@ export default function NavbarSimples() {
 
   const handleLogout = async () => {
     await signOut(auth);
-    router.push("/"); // ✅ AJUSTADO: Redireciona para a raiz (sua nova tela de login)
+    router.push("/"); 
   };
 
-  // Tradução dos roles
   const getRoleLabel = (role: string) => {
     const roles: { [key: string]: string } = {
       porteiro: "Porteiro",
@@ -31,7 +30,6 @@ export default function NavbarSimples() {
   };
 
   return (
-    // Apliquei o gradiente verde e removi a borda e o fundo branco antigo
     <nav className="fixed top-0 left-0 right-0 bg-gradient-to-r from-[#057321] to-[#046119] shadow-md z-50 h-16">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full">
         <div className="flex justify-between items-center h-full">
@@ -51,7 +49,6 @@ export default function NavbarSimples() {
                 <span className="font-bold text-white text-sm sm:text-lg leading-tight whitespace-nowrap">
                 App Correspondência
                 </span>
-                {/* Mostra o cargo abaixo do logo também no mobile se quiser, ou esconde */}
                 {user && (
                     <span className="text-[10px] text-green-100 sm:hidden leading-tight">
                         {getRoleLabel(user.role)}
@@ -65,6 +62,7 @@ export default function NavbarSimples() {
             {user && (
               <Link
                 href="/minha-conta"
+                id="menu-minha-conta" /* 👈 AQUI: Adicionei o ID para o balão achar o ícone */
                 className="flex items-center gap-3 px-3 py-1.5 rounded-lg hover:bg-white/10 transition group"
               >
                 <div className="bg-white/20 p-1.5 rounded-full group-hover:bg-white/30 transition">
@@ -141,4 +139,3 @@ export default function NavbarSimples() {
     </nav>
   );
 }
-

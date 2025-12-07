@@ -1,8 +1,11 @@
 "use client";
+
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
-import { LogOut, ArrowLeft, User, Edit2, Trash2, UserCheck, UserX, Phone, Mail, Plus } from "lucide-react";
+import { 
+  LogOut, ArrowLeft, User, Edit2, Trash2, UserCheck, UserX, 
+  Phone, Mail, Plus, FileText, FileSpreadsheet 
+} from "lucide-react"; // Adicionados ícones FileText e FileSpreadsheet
 import { db, auth } from "@/app/lib/firebase";
 import {
   collection,
@@ -22,8 +25,12 @@ import {
   onAuthStateChanged,
 } from "firebase/auth";
 
-// 1. IMPORTANDO A NAVBAR E O BOTÃO PADRONIZADO
-import Navbar from "@/components/Navbar"; 
+// Importações para PDF e Excel
+import jsPDF from "jspdf";
+import "jspdf-autotable";
+import * as XLSX from "xlsx";
+
+import Navbar from "@/components/Navbar";
 import BotaoVoltar from "@/components/BotaoVoltar";
 
 interface Porteiro {
@@ -234,10 +241,47 @@ export default function GerenciarPorteiros() {
     return matchBusca && matchStatus;
   });
 
-  const handleLogout = async () => {
-    await signOut(auth);
-    router.push("/login");
+  // --- FUNÇÕES DE EXPORTAÇÃO ---
+
+  const gerarPDF = () => {
+    const doc = new jsPDF();
+    
+    // Título
+    doc.text("Relatório de Porteiros", 14, 10);
+    
+    // Configuração da Tabela
+    const tabelaDados = porteirosFiltrados.map((p) => [
+      p.nome,
+      p.email,
+      p.whatsapp,
+      p.status.toUpperCase()
+    ]);
+
+    // @ts-ignore
+    doc.autoTable({
+      head: [["Nome", "Email", "WhatsApp", "Status"]],
+      body: tabelaDados,
+      startY: 20,
+    });
+
+    doc.save("porteiros.pdf");
   };
+
+  const gerarExcel = () => {
+    const dadosExcel = porteirosFiltrados.map((p) => ({
+      Nome: p.nome,
+      Email: p.email,
+      WhatsApp: p.whatsapp,
+      Status: p.status.toUpperCase(),
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(dadosExcel);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Porteiros");
+    XLSX.writeFile(workbook, "porteiros.xlsx");
+  };
+
+  // -----------------------------
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -259,13 +303,35 @@ export default function GerenciarPorteiros() {
               <h2 className="text-2xl font-bold text-gray-900">Gerenciar Porteiros</h2>
               <p className="text-gray-600 text-sm">Cadastre e gerencie o acesso dos porteiros</p>
             </div>
-            <button
-              onClick={abrirModalNovo}
-              className="w-full md:w-auto flex items-center justify-center gap-2 px-6 py-3 bg-[#057321] text-white rounded-lg hover:bg-[#046119] font-bold shadow-sm transition-colors"
-            >
-              <Plus size={20} />
-              Novo Porteiro
-            </button>
+
+            {/* Container dos Botões */}
+            <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+                <button
+                  onClick={gerarPDF}
+                  className="flex items-center justify-center gap-2 px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-bold shadow-sm transition-colors"
+                  title="Gerar PDF"
+                >
+                  <FileText size={20} />
+                  <span className="md:hidden">PDF</span>
+                </button>
+
+                <button
+                  onClick={gerarExcel}
+                  className="flex items-center justify-center gap-2 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-bold shadow-sm transition-colors"
+                  title="Gerar Excel"
+                >
+                  <FileSpreadsheet size={20} />
+                  <span className="md:hidden">Excel</span>
+                </button>
+
+                <button
+                  onClick={abrirModalNovo}
+                  className="flex items-center justify-center gap-2 px-6 py-3 bg-[#057321] text-white rounded-lg hover:bg-[#046119] font-bold shadow-sm transition-colors"
+                >
+                  <Plus size={20} />
+                  Novo Porteiro
+                </button>
+            </div>
           </div>
 
           {/* Filtros */}
@@ -341,16 +407,16 @@ export default function GerenciarPorteiros() {
                 <table className="w-full">
                    <thead className="bg-gray-50 border-b">
                       <tr>
-                         <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Nome</th>
-                         <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Email</th>
-                         <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">WhatsApp</th>
-                         <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
-                         <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Ações</th>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Nome</th>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Email</th>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">WhatsApp</th>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Ações</th>
                       </tr>
                    </thead>
                    <tbody className="bg-white divide-y divide-gray-200">
                       {porteirosFiltrados.length === 0 ? (
-                         <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-500">Nenhum porteiro encontrado</td></tr>
+                          <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-500">Nenhum porteiro encontrado</td></tr>
                       ) : (
                          porteirosFiltrados.map((porteiro) => (
                             <tr key={porteiro.id} className="hover:bg-gray-50 transition">

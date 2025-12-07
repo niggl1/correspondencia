@@ -21,6 +21,7 @@
     "@ionic/pwa-elements": "^3.3.0",
     "@yudiel/react-qr-scanner": "^2.4.1",
     "browser-image-compression": "^2.0.2",
+    "driver.js": "^1.4.0",
     "firebase": "10.13.2",
     "html5-qrcode": "^2.3.8",
     "jspdf": "^3.0.4",
