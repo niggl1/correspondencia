@@ -1,14 +1,6 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
-import {
-  Layers,
-  Edit2,
-  Trash2,
-  CheckCircle,
-  XCircle,
-  Plus,
-  FileDown,
-} from "lucide-react";
+import { Layers, Edit2, Trash2, CheckCircle, XCircle, Plus, FileDown } from "lucide-react";
 import { db, auth } from "@/app/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import {
@@ -26,14 +18,11 @@ import {
   writeBatch,
 } from "firebase/firestore";
 
-// ✅ BOTÃO VOLTAR PADRONIZADO
 import BotaoVoltar from "@/components/BotaoVoltar";
 
-// ✅ PDF (sem popup)
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
-// Interface para Props (para aceitar ID vindo do Admin)
 interface Props {
   condominioId?: string;
 }
@@ -44,6 +33,8 @@ interface Bloco {
   condominioId: string;
   ativo: boolean;
   criadoEm: any;
+  // ✅ novo campo para ordenação natural
+  ordem?: number | null;
 }
 
 export default function GerenciarBlocos({ condominioId: adminCondominioId }: Props) {
@@ -67,11 +58,16 @@ export default function GerenciarBlocos({ condominioId: adminCondominioId }: Pro
   const [userRole, setUserRole] = useState("");
   const [authChecked, setAuthChecked] = useState(false);
 
-  // Determina qual ID usar (Admin ou Usuário Logado)
   const targetCondominioId = adminCondominioId || userCondominioId;
-
-  // ✅ rota de volta padronizada por role
   const backRoute = userRole === "porteiro" ? "/dashboard-porteiro" : "/dashboard-responsavel";
+
+  // ✅ extrai um número do nome (Bloco 1 -> 1, Torre 12 -> 12). Se não tiver número, retorna null.
+  const extrairOrdemDoNome = (n: string): number | null => {
+    const m = (n || "").match(/\d+/);
+    if (!m) return null;
+    const v = Number(m[0]);
+    return Number.isFinite(v) ? v : null;
+  };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -105,19 +101,51 @@ export default function GerenciarBlocos({ condominioId: adminCondominioId }: Pro
     if (!targetCondominioId) return;
     try {
       setLoading(true);
+
+      // ✅ Ordenação: primeiro por "ordem" (1,2,3...), e como desempate por "nome"
+      // Obs: para funcionar sem erro, todos os docs DEVEM ter o campo "ordem" (nem que seja 999999).
       const q = query(
         collection(db, "blocos"),
         where("condominioId", "==", targetCondominioId),
-        orderBy("criadoEm", "desc")
+        orderBy("ordem", "asc"),
+        orderBy("nome", "asc")
       );
+
       const snapshot = await getDocs(q);
       const blocosData = snapshot.docs.map((d) => ({
         id: d.id,
         ...(d.data() as any),
       })) as Bloco[];
+
       setBlocos(blocosData);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Erro ao carregar blocos:", err);
+
+      // ✅ fallback: se ainda não existir o campo "ordem" em docs antigos, evita quebrar a tela
+      try {
+        const qFallback = query(
+          collection(db, "blocos"),
+          where("condominioId", "==", targetCondominioId),
+          orderBy("criadoEm", "desc")
+        );
+        const snapshot = await getDocs(qFallback);
+        const blocosData = snapshot.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as any),
+        })) as Bloco[];
+
+        // ordenação natural no front como fallback
+        const sorted = [...blocosData].sort((a, b) => {
+          const ao = typeof a.ordem === "number" ? a.ordem : extrairOrdemDoNome(a.nome) ?? 999999;
+          const bo = typeof b.ordem === "number" ? b.ordem : extrairOrdemDoNome(b.nome) ?? 999999;
+          if (ao !== bo) return ao - bo;
+          return (a.nome || "").localeCompare(b.nome || "", "pt-BR", { numeric: true, sensitivity: "base" });
+        });
+
+        setBlocos(sorted);
+      } catch (e) {
+        // ignora
+      }
     } finally {
       setLoading(false);
     }
@@ -144,12 +172,18 @@ export default function GerenciarBlocos({ condominioId: adminCondominioId }: Pro
       alert("Nome do bloco é obrigatório");
       return;
     }
+
     try {
       setLoading(true);
+
+      // ✅ define ordem: se tiver número no nome, usa; se não tiver, joga pro final
+      const ordem = extrairOrdemDoNome(nome) ?? 999999;
+
       if (modoEdicao && blocoEditando) {
         await updateDoc(doc(db, "blocos", blocoEditando.id), {
           nome,
           ativo,
+          ordem,
           atualizadoEm: serverTimestamp(),
         });
         alert("Bloco atualizado com sucesso!");
@@ -158,10 +192,12 @@ export default function GerenciarBlocos({ condominioId: adminCondominioId }: Pro
           nome,
           condominioId: targetCondominioId,
           ativo,
+          ordem,
           criadoEm: serverTimestamp(),
         });
         alert("Bloco cadastrado com sucesso!");
       }
+
       setModalAberto(false);
       carregarBlocos();
     } catch (err) {
@@ -184,15 +220,18 @@ export default function GerenciarBlocos({ condominioId: adminCondominioId }: Pro
     try {
       setLoading(true);
       const batch = writeBatch(db);
+
       for (let i = 1; i <= quantidadeLote; i++) {
         const novoBlocoRef = doc(collection(db, "blocos"));
         batch.set(novoBlocoRef, {
-          nome: prefixoLote + " " + i,
+          nome: `${prefixoLote} ${i}`,
           condominioId: targetCondominioId,
           ativo: true,
+          ordem: i, // ✅ ordem numérica natural
           criadoEm: serverTimestamp(),
         });
       }
+
       await batch.commit();
       alert(quantidadeLote + " blocos gerados com sucesso!");
       setModalLoteAberto(false);
@@ -219,9 +258,7 @@ export default function GerenciarBlocos({ condominioId: adminCondominioId }: Pro
   };
 
   const excluirBloco = async (bloco: Bloco) => {
-    if (!confirm("Tem certeza que deseja excluir o bloco " + bloco.nome + "?")) {
-      return;
-    }
+    if (!confirm("Tem certeza que deseja excluir o bloco " + bloco.nome + "?")) return;
     try {
       await deleteDoc(doc(db, "blocos", bloco.id));
       alert("Bloco excluído com sucesso!");
@@ -244,16 +281,12 @@ export default function GerenciarBlocos({ condominioId: adminCondominioId }: Pro
   }, [blocos, busca, filtroStatus]);
 
   // =========================
-  // ✅ EXPORTAÇÕES (Excel/CSV e PDF sem popup)
+  // EXPORTAÇÕES
   // =========================
   const formatDateBR = (value: any) => {
     try {
       const date: Date | null =
-        value?.toDate?.() instanceof Date
-          ? value.toDate()
-          : value instanceof Date
-          ? value
-          : null;
+        value?.toDate?.() instanceof Date ? value.toDate() : value instanceof Date ? value : null;
       if (!date) return "";
       return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(date);
     } catch {
@@ -264,18 +297,15 @@ export default function GerenciarBlocos({ condominioId: adminCondominioId }: Pro
   const getExportRows = () =>
     blocosFiltrados.map((b) => ({
       Nome: b.nome ?? "",
+      Ordem: typeof b.ordem === "number" ? b.ordem : "",
       Status: b.ativo ? "Ativo" : "Inativo",
       "Criado em": formatDateBR(b.criadoEm),
       ID: b.id,
     }));
 
-  // CSV (abre no Excel) — sem dependências externas
   const exportarExcelCSV = () => {
     const rows = getExportRows();
-    if (rows.length === 0) {
-      alert("Não há blocos para exportar.");
-      return;
-    }
+    if (rows.length === 0) return alert("Não há blocos para exportar.");
 
     const headers = Object.keys(rows[0]);
     const escapeCSV = (val: any) => {
@@ -302,29 +332,23 @@ export default function GerenciarBlocos({ condominioId: adminCondominioId }: Pro
     URL.revokeObjectURL(url);
   };
 
-  // ✅ PDF: gera e baixa direto (sem window.open -> sem bloqueio de popup)
   const exportarPDF = () => {
     const rows = getExportRows();
-    if (rows.length === 0) {
-      alert("Não há blocos para exportar.");
-      return;
-    }
+    if (rows.length === 0) return alert("Não há blocos para exportar.");
 
     const docPdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
 
-    const title = "Relação de Blocos";
-    const sub = `Gerado em: ${new Date().toLocaleString("pt-BR")}`;
-
     docPdf.setFont("helvetica", "bold");
     docPdf.setFontSize(14);
-    docPdf.text(title, 40, 40);
+    docPdf.text("Relação de Blocos", 40, 40);
 
     docPdf.setFont("helvetica", "normal");
     docPdf.setFontSize(10);
-    docPdf.text(sub, 40, 58);
+    docPdf.text(`Gerado em: ${new Date().toLocaleString("pt-BR")}`, 40, 58);
 
-    const head = [["Nome", "Status", "Criado em", "ID"]];
+    const head = [["Ordem", "Nome", "Status", "Criado em", "ID"]];
     const body = rows.map((r) => [
+      (r as any).Ordem,
       (r as any).Nome,
       (r as any).Status,
       (r as any)["Criado em"],
@@ -339,10 +363,11 @@ export default function GerenciarBlocos({ condominioId: adminCondominioId }: Pro
       headStyles: { fillColor: [243, 244, 246], textColor: [17, 24, 39] },
       alternateRowStyles: { fillColor: [249, 250, 251] },
       columnStyles: {
-        0: { cellWidth: 160 },
-        1: { cellWidth: 70 },
-        2: { cellWidth: 90 },
-        3: { cellWidth: 160 },
+        0: { cellWidth: 50 },
+        1: { cellWidth: 130 },
+        2: { cellWidth: 70 },
+        3: { cellWidth: 90 },
+        4: { cellWidth: 160 },
       },
       margin: { left: 40, right: 40 },
     });
@@ -350,7 +375,32 @@ export default function GerenciarBlocos({ condominioId: adminCondominioId }: Pro
     docPdf.save(`blocos_${new Date().toISOString().slice(0, 10)}.pdf`);
   };
 
-  // =========================
+  // ✅ utilitário: preencher "ordem" nos blocos antigos (1 clique)
+  const corrigirOrdemExistente = async () => {
+    if (!confirm("Isso vai preencher o campo 'ordem' em blocos antigos. Continuar?")) return;
+    try {
+      setLoading(true);
+      const q = query(collection(db, "blocos"), where("condominioId", "==", targetCondominioId));
+      const snap = await getDocs(q);
+
+      const batch = writeBatch(db);
+      snap.docs.forEach((d) => {
+        const data = d.data() as any;
+        const nomeDoc = String(data.nome ?? "");
+        const ordem = extrairOrdemDoNome(nomeDoc) ?? 999999;
+        batch.update(doc(db, "blocos", d.id), { ordem });
+      });
+
+      await batch.commit();
+      alert("Campo 'ordem' preenchido! Agora a lista ficará em ordem 1,2,3...");
+      carregarBlocos();
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao corrigir ordem.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (!authChecked || loading) {
     return (
@@ -396,6 +446,15 @@ export default function GerenciarBlocos({ condominioId: adminCondominioId }: Pro
           >
             <FileDown size={20} />
             Excel
+          </button>
+
+          <button
+            onClick={corrigirOrdemExistente}
+            className="flex items-center justify-center gap-2 px-4 py-3 bg-white border border-[#057321] text-[#057321] rounded-lg hover:bg-green-50 font-medium transition shadow-sm"
+            title="Preencher o campo ordem nos blocos antigos"
+          >
+            <Layers size={20} />
+            Corrigir Ordem
           </button>
 
           <button
@@ -447,10 +506,7 @@ export default function GerenciarBlocos({ condominioId: adminCondominioId }: Pro
           <div className="text-center p-8 bg-white rounded-xl text-gray-500">Nenhum bloco encontrado</div>
         ) : (
           blocosFiltrados.map((bloco) => (
-            <div
-              key={bloco.id}
-              className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col gap-3"
-            >
+            <div key={bloco.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col gap-3">
               <div className="flex justify-between items-center">
                 <h3 className="font-bold text-gray-900 text-lg">{bloco.nome}</h3>
                 <span
@@ -471,9 +527,7 @@ export default function GerenciarBlocos({ condominioId: adminCondominioId }: Pro
                 <button
                   onClick={() => alternarStatus(bloco)}
                   className={`flex items-center justify-center gap-2 p-2 rounded-lg font-medium transition ${
-                    bloco.ativo
-                      ? "bg-yellow-50 text-yellow-700 hover:bg-yellow-100"
-                      : "bg-green-50 text-green-700 hover:bg-green-100"
+                    bloco.ativo ? "bg-yellow-50 text-yellow-700 hover:bg-yellow-100" : "bg-green-50 text-green-700 hover:bg-green-100"
                   }`}
                 >
                   {bloco.ativo ? <XCircle size={16} /> : <CheckCircle size={16} />}
@@ -497,15 +551,9 @@ export default function GerenciarBlocos({ condominioId: adminCondominioId }: Pro
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
-                  Nome
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
-                  Ações
-                </th>
+                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Nome</th>
+                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Ações</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -531,22 +579,13 @@ export default function GerenciarBlocos({ condominioId: adminCondominioId }: Pro
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-3">
-                      <button
-                        onClick={() => abrirModalEditar(bloco)}
-                        className="text-blue-600 hover:text-blue-900 font-bold"
-                      >
+                      <button onClick={() => abrirModalEditar(bloco)} className="text-blue-600 hover:text-blue-900 font-bold">
                         Editar
                       </button>
-                      <button
-                        onClick={() => alternarStatus(bloco)}
-                        className="text-yellow-600 hover:text-yellow-900 font-bold"
-                      >
+                      <button onClick={() => alternarStatus(bloco)} className="text-yellow-600 hover:text-yellow-900 font-bold">
                         {bloco.ativo ? "Desativar" : "Ativar"}
                       </button>
-                      <button
-                        onClick={() => excluirBloco(bloco)}
-                        className="text-red-600 hover:text-red-900 font-bold"
-                      >
+                      <button onClick={() => excluirBloco(bloco)} className="text-red-600 hover:text-red-900 font-bold">
                         Excluir
                       </button>
                     </td>
@@ -576,8 +615,11 @@ export default function GerenciarBlocos({ condominioId: adminCondominioId }: Pro
                   value={nome}
                   onChange={(e) => setNome(e.target.value)}
                   className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-[#057321]"
-                  placeholder="Ex: Bloco A, Torre 1..."
+                  placeholder="Ex: Bloco 1, Torre 2..."
                 />
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Dica: se o nome tiver número (ex: “Bloco 3”), ele ordena automaticamente por 1,2,3...
+                </p>
               </div>
               <div className="flex items-center gap-2">
                 <input
