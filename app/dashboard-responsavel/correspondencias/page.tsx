@@ -537,7 +537,7 @@ Você recebeu uma correspondência
 │ Enviado por: ${enviadoPor}
 ━━━━━━━━━━━━━━━━
 
-🔗 *Acessar no sistema:*
+*Acessar no sistema:*
 ${linkCurto}`;
 
     if (fotoUrl) {

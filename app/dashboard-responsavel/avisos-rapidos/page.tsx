@@ -144,7 +144,7 @@ Você recebeu uma correspondência
 │ Enviado por: {{ENVIADO_POR}}
 ━━━━━━━━━━━━━━━━
 
-🔗 *Acessar no sistema:*
+*Acessar no sistema:*
 {{LINK}}
 
 Aguardamos a sua retirada`;
@@ -324,26 +324,75 @@ Aguardamos a sua retirada`;
     setModalEnvioAberto(true);
   };
 
+  // ✅ FUNÇÃO AJUSTADA ✅
   const confirmarEnvio = async () => {
     if (!moradorParaEnvio) return;
 
-    // ✅ DETECÇÃO CAPACITOR/WEB
-    const isCapacitor = typeof window !== 'undefined' && (window as any).Capacitor;
+    const isCapacitor =
+      typeof window !== "undefined" && !!(window as any).Capacitor;
+
+    // Detecta web mobile (pra evitar about:blank feio)
+    const isMobileWeb =
+      !isCapacitor &&
+      typeof navigator !== "undefined" &&
+      /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
     let whatsappWindow: Window | null = null;
 
-    // SE FOR WEB: Abre janela IMEDIATAMENTE para evitar bloqueio de popup
-    if (!isCapacitor) {
-        whatsappWindow = window.open("", "_blank");
-        if (whatsappWindow) {
-          whatsappWindow.document.write(`
-            <html>
-              <body style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background-color: #f0f2f5;">
-                <h2 style="color: #057321;">Gerando mensagem...</h2>
-                <p style="color: #666;">Por favor, aguarde enquanto preparamos o envio.</p>
-              </body>
-            </html>
-          `);
-        }
+    // ✅ WEB DESKTOP: abre janela cedo com overlay
+    // ✅ WEB MOBILE: NÃO abre janela vazia (evita about:blank)
+    if (!isCapacitor && !isMobileWeb) {
+      whatsappWindow = window.open("", "_blank");
+      if (whatsappWindow) {
+        whatsappWindow.document.write(`
+          <html>
+            <head>
+              <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+              <title>Gerando aviso...</title>
+              <style>
+                body{
+                  margin:0; height:100vh; display:flex; align-items:center; justify-content:center;
+                  background:#f3f4f6; font-family:system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+                }
+                .card{
+                  width:min(92vw,420px); background:#fff; border-radius:18px; padding:22px 20px;
+                  box-shadow:0 10px 30px rgba(0,0,0,.12); text-align:center;
+                }
+                .spinner{
+                  width:54px; height:54px; border-radius:999px;
+                  border:6px solid #e5e7eb; border-top-color:#057321; margin:0 auto 14px;
+                  animation:spin 1s linear infinite;
+                }
+                @keyframes spin{ to{ transform:rotate(360deg);} }
+                h2{ margin:0; font-size:20px; font-weight:800; color:#111827; }
+                p{ margin:6px 0 14px; font-size:14px; color:#6b7280; }
+                .bar{
+                  height:10px; background:#eef2f7; border-radius:999px; overflow:hidden;
+                }
+                .bar > div{
+                  width:40%; height:100%; background:#057321; border-radius:999px;
+                  animation:load 1.6s ease-in-out infinite;
+                }
+                @keyframes load{
+                  0%{ transform:translateX(-100%); }
+                  50%{ transform:translateX(50%); }
+                  100%{ transform:translateX(200%); }
+                }
+                .pct{ margin-top:8px; font-size:12px; color:#6b7280; font-weight:700; }
+              </style>
+            </head>
+            <body>
+              <div class="card">
+                <div class="spinner"></div>
+                <h2>Gerando aviso...</h2>
+                <p>Por favor, não feche a página.</p>
+                <div class="bar"><div></div></div>
+                <div class="pct">Aguarde...</div>
+              </div>
+            </body>
+          </html>
+        `);
+      }
     }
 
     setEnviando(true);
@@ -398,7 +447,6 @@ Aguardamos a sua retirada`;
         blocoNome: blocoSelecionado?.nome || moradorParaEnvio.blocoNome || "",
         apartamento: moradorParaEnvio.apartamento,
 
-        // placeholder (será atualizado com a mensagem final)
         mensagem: "Gerando...",
         protocolo: protocoloGerado,
         fotoUrl: publicFotoUrl,
@@ -411,24 +459,19 @@ Aguardamos a sua retirada`;
       const enviadoPorNome = user?.nome || "Usuário";
       const blocoNomeFinal = blocoSelecionado?.nome || moradorParaEnvio.blocoNome || "";
 
-      // ✅ 3) substitui variáveis
       let mensagemFinal = mensagemTemplate;
       mensagemFinal = mensagemFinal.replaceAll("{{NOME}}", moradorParaEnvio.nome);
       mensagemFinal = mensagemFinal.replaceAll("{{APTO}}", moradorParaEnvio.apartamento);
       mensagemFinal = mensagemFinal.replaceAll("{{BLOCO}}", blocoNomeFinal || "");
       mensagemFinal = mensagemFinal.replaceAll("{{PROTOCOLO}}", protocoloGerado);
       mensagemFinal = mensagemFinal.replaceAll("{{ENVIADO_POR}}", enviadoPorNome);
-
       mensagemFinal = mensagemFinal.replaceAll("{{LINK}}", linkDoAviso || LINK_SISTEMA_FALLBACK);
-      
-      // ✅ REMOVIDO: Link da foto não vai mais no texto do WhatsApp para evitar URL longa
       mensagemFinal = mensagemFinal.replaceAll("{{FOTO}}", "");
 
-      // ✅ 4) salva mensagem final no Firestore
       await updateDoc(doc(db, "avisos_rapidos", avisoId), {
         mensagem: mensagemFinal,
         linkUrl: linkDoAviso,
-        fotoUrl: publicFotoUrl || null, // garante padrão
+        fotoUrl: publicFotoUrl || null,
       });
 
       const whatsappLink = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(mensagemFinal)}`;
@@ -436,14 +479,15 @@ Aguardamos a sua retirada`;
       setProgress(100);
       setMessage("Abrindo WhatsApp...");
 
-      // ✅ ABERTURA INTELIGENTE
       if (isCapacitor) {
-         // App Nativo: Usa _system
-         window.open(whatsappLink, "_system");
+        window.open(whatsappLink, "_system");
+      } else if (isMobileWeb) {
+        // Mobile web: abre direto na mesma aba (mais confiável)
+        window.location.href = whatsappLink;
       } else {
-         // Web: Usa a janela que já foi aberta
-         if (whatsappWindow) whatsappWindow.location.href = whatsappLink;
-         else window.open(whatsappLink, "_blank");
+        // Desktop web: usa janela pré-aberta
+        if (whatsappWindow) whatsappWindow.location.href = whatsappLink;
+        else window.open(whatsappLink, "_blank");
       }
 
       setSucesso(`Aviso enviado para ${moradorParaEnvio.nome}!`);
@@ -454,7 +498,6 @@ Aguardamos a sua retirada`;
     } catch (error) {
       console.error("Erro envio:", error);
       setErro("Erro ao processar envio.");
-      // Se deu erro na web, fecha a janela que ficou "loading"
       if (whatsappWindow) whatsappWindow.close();
     } finally {
       setEnviando(false);
@@ -769,7 +812,9 @@ Aguardamos a sua retirada`;
               ) : moradoresFiltradosNoModal.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">Nenhum morador.</div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{moradoresFiltradosNoModal.map(renderCardMorador)}</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {moradoresFiltradosNoModal.map(renderCardMorador)}
+                </div>
               )}
             </div>
           </div>

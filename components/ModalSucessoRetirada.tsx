@@ -35,7 +35,7 @@ export default function ModalSucessoRetirada({
     const textoBase =
       mensagemFormatada || `Olá *${moradorNome}*! A correspondência (Protocolo: ${protocolo}) foi retirada.`;
 
-    return `${textoBase}\n\n🔗 *Acesse o recibo digital:*\n${linkPublico}`;
+    return `${textoBase}\n\n *Acesse o recibo digital:*\n${linkPublico}`;
   }, [mensagemFormatada, moradorNome, protocolo, linkPublico]);
 
   const whatsappUrl = useMemo(() => {
