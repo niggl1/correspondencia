@@ -1,48 +1,51 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 
-admin.initializeApp();
+if (admin.apps.length === 0) {
+  admin.initializeApp();
+}
+exports.transferirAcessoCondominio = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Não autenticado.");
+  }
 
-exports.criarPorteiro = functions.https.onCall(async (data, context) => {
-  // Verifica se o usuário que está chamando a função é um admin
-  if (context.auth.token.role !== "admin") {
+  const isAdminMaster = context.auth.token?.role === "ADMIN_MASTER";
+  if (!isAdminMaster) {
+    throw new functions.https.HttpsError("permission-denied", "Sem permissão.");
+  }
+
+  const { condominioId, novoEmail } = data || {};
+  if (!condominioId || !novoEmail) {
     throw new functions.https.HttpsError(
-      "permission-denied",
-      "Apenas administradores podem criar novos porteiros."
+      "invalid-argument",
+      "condominioId e novoEmail são obrigatórios."
     );
   }
 
-  const { email, senha, nome, whatsapp, condominioId } = data;
-
-  try {
-    const userRecord = await admin.auth().createUser({
-      email: email,
-      password: senha,
-      displayName: nome,
-    });
-
-    await admin.firestore().collection("porteiros").doc(userRecord.uid).set({
-      uid: userRecord.uid,
-      nome: nome,
-      email: email,
-      whatsapp: whatsapp,
-      condominioId: condominioId,
-      role: "porteiro",
-      ativo: true,
-      criadoEm: admin.firestore.FieldValue.serverTimestamp(),
-    });
-
-    return { uid: userRecord.uid };
-  } catch (error) {
-    if (error.code === "auth/email-already-exists") {
-      throw new functions.https.HttpsError(
-        "already-exists",
-        "Este email já está em uso."
-      );
-    }
-    throw new functions.https.HttpsError(
-      "internal",
-      "Erro ao criar porteiro."
-    );
+  const ref = admin.firestore().collection("condominios").doc(condominioId);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    throw new functions.https.HttpsError("not-found", "Condomínio não encontrado.");
   }
+
+  const { authUid } = snap.data() || {};
+  if (!authUid) {
+    throw new functions.https.HttpsError("failed-precondition", "Sem authUid no condomínio.");
+  }
+
+  await admin.auth().updateUser(authUid, { email: novoEmail, emailVerified: false });
+
+  // derruba sessões
+  await admin.auth().revokeRefreshTokens(authUid);
+
+  // atualiza firestore
+  await ref.update({
+    emailLogin: novoEmail,
+    atualizadoEm: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  // gera link pro novo síndico definir senha
+  const resetLink = await admin.auth().generatePasswordResetLink(novoEmail);
+
+  return { ok: true, resetLink };
 });
