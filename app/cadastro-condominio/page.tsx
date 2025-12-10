@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { db, auth } from "@/app/lib/firebase";
 import { createUserWithEmailAndPassword, signOut } from "firebase/auth";
 import { collection, addDoc, setDoc, doc, serverTimestamp } from "firebase/firestore";
-// 👇 Importação da função que criamos
+// 👇 Certifique-se que este arquivo existe em /app/utils/ ou ajuste o caminho
 import { gerarAmbienteTeste } from "@/utils/gerarAmbienteTeste"; 
 
 export default function CadastroCondominioPage() {
@@ -69,7 +69,8 @@ export default function CadastroCondominioPage() {
       });
 
       // 3. Salva os dados do usuário no Firestore vinculado ao novo condomínio
-      await setDoc(doc(db, "users", uid), {
+      const userRef = doc(db, "users", uid);
+      await setDoc(userRef, {
         uid,
         nome: nomeResponsavel,
         email,
@@ -81,18 +82,21 @@ export default function CadastroCondominioPage() {
       });
 
       // 4. 🚀 GERA O AMBIENTE DE TESTE AUTOMATICAMENTE
-      // Cria o Bloco Teste e o Morador Teste com o WhatsApp do Responsável
-      await gerarAmbienteTeste({
-        condominioId: condominioRef.id,
-        condominioNome: nomeCondominio,
-        whatsappDestino: whatsapp
-      });
+      try {
+          await gerarAmbienteTeste({
+            condominioId: condominioRef.id,
+            condominioNome: nomeCondominio,
+            whatsappDestino: whatsapp
+          });
+      } catch (error) {
+          console.warn("⚠️ Aviso: Ambiente de teste não gerado (função auxiliar pode estar faltando ou erro de rede). O cadastro principal continua válido.", error);
+      }
 
       // Faz logout para que o usuário faça login oficialmente na tela de login
       await signOut(auth);
 
       alert(
-        `✅ Condomínio cadastrado com sucesso!\n\nCriamos também um "Morador de Teste" com seu WhatsApp para você testar as notificações.\n\nFaça login para começar.`
+        `✅ Condomínio cadastrado com sucesso!\n\nCriamos também um "Morador de Teste" para você validar o sistema.\n\nFaça login para começar.`
       );
 
       router.push("/"); 
@@ -109,8 +113,16 @@ export default function CadastroCondominioPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
+    // AJUSTE MOBILE: Container scrollável, altura dinâmica e padding para Notch
+    <div 
+        className="bg-gradient-to-br from-green-50 to-emerald-100 flex justify-center p-4 w-full overflow-y-auto"
+        style={{ 
+            minHeight: '100dvh',
+            paddingTop: 'max(1.5rem, env(safe-area-inset-top))',
+            paddingBottom: '2rem'
+        }}
+    >
+      <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md my-auto h-fit">
         
         {/* Cabeçalho */}
         <div className="text-center mb-8">
@@ -143,7 +155,7 @@ export default function CadastroCondominioPage() {
         {/* Indicador de etapas */}
         <div className="flex items-center justify-center gap-2 mb-8">
           <div
-            className={`flex items-center justify-center w-10 h-10 rounded-full ${
+            className={`flex items-center justify-center w-10 h-10 rounded-full font-bold ${
               etapa === 1 ? "text-white bg-[#057321]" : "text-white bg-[#057321]"
             }`}
           >
@@ -153,7 +165,7 @@ export default function CadastroCondominioPage() {
           <div className="w-16 h-1 bg-gray-300"></div>
 
           <div
-            className={`flex items-center justify-center w-10 h-10 rounded-full ${
+            className={`flex items-center justify-center w-10 h-10 rounded-full font-bold ${
               etapa === 2 ? "text-white bg-[#057321]" : "bg-gray-300 text-gray-700"
             }`}
           >
@@ -177,6 +189,7 @@ export default function CadastroCondominioPage() {
               required
               value={cnpj}
               onChange={setCnpj}
+              placeholder="00.000.000/0000-00"
             />
 
             <TextArea
@@ -197,7 +210,7 @@ export default function CadastroCondominioPage() {
               <img
                 src={logoUrl}
                 alt="Preview"
-                className="w-24 h-24 rounded-lg object-cover border-2 border-gray-200"
+                className="w-24 h-24 rounded-lg object-cover border-2 border-gray-200 mx-auto"
                 onError={(e) => ((e.target as HTMLImageElement).style.display = "none")}
               />
             )}
@@ -205,14 +218,14 @@ export default function CadastroCondominioPage() {
             <div className="flex gap-3 mt-6">
               <button
                 onClick={() => router.push("/")} 
-                className="flex-1 px-6 py-3 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50"
+                className="flex-1 px-6 py-3 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 active:bg-gray-100 transition"
               >
                 Cancelar
               </button>
 
               <button
                 onClick={avancarParaEtapa2}
-                className="flex-1 px-6 py-3 bg-[#057321] text-white rounded-lg font-medium hover:bg-[#045a1a]"
+                className="flex-1 px-6 py-3 bg-[#057321] text-white rounded-lg font-medium hover:bg-[#045a1a] active:scale-[0.98] transition"
               >
                 Próximo →
               </button>
@@ -263,12 +276,13 @@ export default function CadastroCondominioPage() {
               required
               value={whatsapp}
               onChange={setWhatsapp}
+              placeholder="(00) 00000-0000"
             />
 
             <div className="flex gap-3 mt-6">
               <button
                 onClick={voltarParaEtapa1}
-                className="flex-1 px-6 py-3 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50"
+                className="flex-1 px-6 py-3 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 active:bg-gray-100 transition"
               >
                 ← Voltar
               </button>
@@ -276,9 +290,9 @@ export default function CadastroCondominioPage() {
               <button
                 onClick={finalizarCadastro}
                 disabled={loading}
-                className="flex-1 px-6 py-3 bg-[#057321] text-white rounded-lg font-medium hover:bg-[#045a1a] disabled:opacity-50"
+                className="flex-1 px-6 py-3 bg-[#057321] text-white rounded-lg font-medium hover:bg-[#045a1a] disabled:opacity-50 active:scale-[0.98] transition"
               >
-                {loading ? "Cadastrando..." : "Finalizar Cadastro"}
+                {loading ? "Cadastrando..." : "Finalizar"}
               </button>
             </div>
 
@@ -301,20 +315,22 @@ export default function CadastroCondominioPage() {
 }
 
 /* ---------------------- */
-/* COMPONENTES PADRÃO */
+/* COMPONENTES AJUSTADOS  */
 /* ---------------------- */
 
-function Input({ label, required, value, onChange, type = "text" }: any) {
+function Input({ label, required, value, onChange, type = "text", placeholder = "" }: any) {
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-1">
         {label} {required && <span className="text-red-500">*</span>}
       </label>
+      {/* AJUSTE: text-base evita zoom no iPhone */}
       <input
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-[#057321] focus:border-[#057321]"
+        placeholder={placeholder}
+        className="w-full border border-gray-300 rounded-lg px-4 py-3 text-base focus:ring-[#057321] focus:border-[#057321]"
       />
     </div>
   );
@@ -326,12 +342,12 @@ function TextArea({ label, required, value, onChange }: any) {
       <label className="block text-sm font-medium text-gray-700 mb-1">
         {label} {required && <span className="text-red-500">*</span>}
       </label>
-
+      {/* AJUSTE: text-base evita zoom no iPhone */}
       <textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
         rows={3}
-        className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-[#057321] focus:border-[#057321]"
+        className="w-full border border-gray-300 rounded-lg px-4 py-3 text-base focus:ring-[#057321] focus:border-[#057321]"
       ></textarea>
     </div>
   );
@@ -352,17 +368,18 @@ function PasswordInput({
       </label>
 
       <div className="relative">
+        {/* AJUSTE: text-base evita zoom no iPhone */}
         <input
           type={mostrar ? "text" : "password"}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full border border-gray-300 rounded-lg px-4 py-3 pr-12 focus:ring-[#057321] focus:border-[#057321]"
+          className="w-full border border-gray-300 rounded-lg px-4 py-3 pr-12 text-base focus:ring-[#057321] focus:border-[#057321]"
         />
 
         <button
           type="button"
           onClick={() => setMostrar(!mostrar)}
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 p-2"
         >
           {mostrar ? (
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

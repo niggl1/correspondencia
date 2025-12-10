@@ -2,13 +2,13 @@
 
 import { useState, useEffect, useRef, useCallback, memo } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link"; // Importação necessária para o botão de config
+import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 import { useAvisosRapidos } from "@/hooks/useAvisosRapidos";
 import { useTemplates } from "@/hooks/useTemplates"; 
 import { parseTemplate } from "@/utils/templateParser"; 
 import { db, storage } from "@/app/lib/firebase";
-import { collection, query, where, getDocs, doc, updateDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, doc, updateDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import Navbar from "@/components/Navbar";
 import BotaoVoltar from "@/components/BotaoVoltar"; 
@@ -17,10 +17,10 @@ import UploadImagem from "@/components/UploadImagem";
 import { LoadingOverlay } from "@/components/LoadingOverlay";
 import {
   Building2, User, Phone, Home, X, Zap, CheckCircle, AlertCircle,
-  History, Search, Send, Loader2, Settings // Adicionado Settings
+  History, Search, Send, Loader2, Settings
 } from "lucide-react";
 
-// --- FUNÇÃO AUXILIAR DE IMAGEM ---
+// --- FUNÇÃO AUXILIAR DE IMAGEM OTIMIZADA ---
 const compressImage = async (file: File): Promise<File> => {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -30,17 +30,20 @@ const compressImage = async (file: File): Promise<File> => {
       img.src = event.target?.result as string;
       img.onload = () => {
         const canvas = document.createElement("canvas");
-        const MAX_WIDTH = 500;
+        const MAX_WIDTH = 450;
         let width = img.width;
         let height = img.height;
+        
         if (width > MAX_WIDTH) {
           height = height * (MAX_WIDTH / width);
           width = MAX_WIDTH;
         }
+        
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext("2d");
         ctx?.drawImage(img, 0, 0, width, height);
+        
         canvas.toBlob((blob) => {
           if (blob) {
             const newFile = new File([blob], file.name, { type: "image/jpeg", lastModified: Date.now() });
@@ -80,9 +83,7 @@ CardMorador.displayName = "CardMorador";
 function AvisosRapidosPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
-  const { registrarAviso } = useAvisosRapidos();
   
-  // Hook de templates (só busca se tiver user)
   const { templates } = useTemplates(user?.condominioId || "");
   const warningTemplate = templates.find(t => t.category === 'WARNING');
 
@@ -103,7 +104,6 @@ function AvisosRapidosPage() {
   const [enviando, setEnviando] = useState(false);
   const [protocoloGerado, setProtocoloGerado] = useState("");
   
-  const backgroundUploadRef = useRef<Promise<void> | null>(null);
   const cacheBlocos = useRef<Record<string, Morador[]>>({});
 
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
@@ -112,7 +112,6 @@ function AvisosRapidosPage() {
   const MSG_PADRAO = "Olá *{{NOME}}*! Chegou correspondência.\nProtocolo: *{{PROTOCOLO}}*\n{{FOTO}}\nCompareça à portaria.";
   const [mensagemTemplate, setMensagemTemplate] = useState<string>(MSG_PADRAO);
 
-  // Carrega template personalizado ou do localStorage
   useEffect(() => {
     if (warningTemplate) {
       setMensagemTemplate(warningTemplate.content);
@@ -199,67 +198,93 @@ function AvisosRapidosPage() {
 
   const confirmarEnvio = async () => {
     if (!moradorParaEnvio) return;
-    setEnviando(true);
-    try {
-      const telefoneDoMorador = moradorParaEnvio.telefone || "";
-      let cleanPhone = telefoneDoMorador.replace(/\D/g, "");
-      if (cleanPhone.startsWith("0")) cleanPhone = cleanPhone.substring(1);
-      if (cleanPhone.length >= 10 && cleanPhone.length <= 11) cleanPhone = "55" + cleanPhone;
+    
+    // 1. Geração local do ID
+    const avisoDocRef = doc(collection(db, "avisos_rapidos"));
+    const avisoId = avisoDocRef.id;
 
-      let arquivoFinal = imagemAviso;
-      if (imagemAviso) { arquivoFinal = await compressImage(imagemAviso); }
+    // 2. Preparação dos dados
+    const telefoneDoMorador = moradorParaEnvio.telefone || "";
+    let cleanPhone = telefoneDoMorador.replace(/\D/g, "");
+    if (cleanPhone.startsWith("0")) cleanPhone = cleanPhone.substring(1);
+    if (cleanPhone.length >= 10 && cleanPhone.length <= 11) cleanPhone = "55" + cleanPhone;
 
-      const avisoId = await registrarAviso({
-        enviadoPorId: user?.uid || "", enviadoPorNome: user?.nome || "Porteiro", enviadoPorRole: user?.role || "porteiro",
-        moradorId: moradorParaEnvio.id, moradorNome: moradorParaEnvio.nome, moradorTelefone: moradorParaEnvio.telefone || "", 
-        condominioId: user?.condominioId || "", blocoId: moradorParaEnvio.blocoId || "", blocoNome: blocoSelecionado?.nome || moradorParaEnvio.blocoNome || "",
-        apartamento: moradorParaEnvio.apartamento, mensagem: "", protocolo: protocoloGerado, fotoUrl: "", 
-      });
+    const dataHoraFormatada = new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const usuarioAny = user as any;
+    const nomeCondominio = usuarioAny?.condominioNome || usuarioAny?.nomeCondominio || "Condomínio";
+    
+    // --- LÓGICA DE TRATAMENTO DE IMAGEM ---
+    const linkReal = `${baseUrl}/ver?id=${avisoId}`;
+    const temFoto = !!imagemAviso; 
 
-      let linkParaMensagem = "";
-      if (arquivoFinal) { linkParaMensagem = `${baseUrl}/ver/${avisoId}`; }
+    const conteudoParaMensagem = temFoto ? linkReal : "*(Foto não foi anexada)*";
 
-      const dataHoraFormatada = new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-      
-      let mensagemFinal = "";
-      const usuarioAny = user as any;
-      const nomeCondominio = usuarioAny?.condominioNome || usuarioAny?.nomeCondominio || "Condomínio";
-      
-      if (mensagemTemplate && mensagemTemplate.length > 10) {
-         mensagemFinal = parseTemplate(mensagemTemplate, {
-            NOME: moradorParaEnvio.nome.split(' ')[0],
-            PROTOCOLO: protocoloGerado,
-            FOTO: linkParaMensagem || LINK_SISTEMA,
-            DATA: dataHoraFormatada,
-            CONDOMINIO: nomeCondominio,
-            BLOCO: moradorParaEnvio.blocoNome || "",
-            APTO: moradorParaEnvio.apartamento
-         });
-      } else {
-         // Fallback caso não tenha template carregado
-         mensagemFinal = `*AVISO DE CORRESPONDÊNCIA*\n\nOlá, *${moradorParaEnvio.nome.split(' ')[0]}*!\nUnidade: *${moradorParaEnvio.apartamento}*\n\nVocê recebeu uma correspondência.\nProtocolo: *${protocoloGerado}*\n\nCompareça à portaria para retirada.`;
-      }
+    let mensagemFinal = "";
+    if (mensagemTemplate && mensagemTemplate.length > 10) {
+        mensagemFinal = parseTemplate(mensagemTemplate, {
+           NOME: moradorParaEnvio.nome.split(' ')[0],
+           PROTOCOLO: protocoloGerado,
+           FOTO: conteudoParaMensagem, 
+           DATA: dataHoraFormatada,
+           CONDOMINIO: nomeCondominio,
+           BLOCO: moradorParaEnvio.blocoNome || "",
+           APTO: moradorParaEnvio.apartamento
+        });
+    } else {
+        mensagemFinal = `*AVISO DE CORRESPONDÊNCIA*\n\nOlá, *${moradorParaEnvio.nome.split(' ')[0]}*!\nUnidade: *${moradorParaEnvio.apartamento}*\n\nVocê recebeu uma correspondência.\nProtocolo: *${protocoloGerado}*\n\n${conteudoParaMensagem}\n\nCompareça à portaria para retirada.`;
+    }
 
-      const whatsappLink = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(mensagemFinal)}`;
-      window.open(whatsappLink, "_blank");
+    // --- LIMPEZA GERAL DE CHAVES "{" e "}" ---
+    // Isso remove qualquer chave que tenha sobrado do template, ex: {Morador -> Morador
+    mensagemFinal = mensagemFinal.replace(/[{}]/g, "");
+    
+    const whatsappLink = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(mensagemFinal)}`;
 
-      if (arquivoFinal && avisoId) {
-         backgroundUploadRef.current = (async () => {
-           try {
-               const storageRef = ref(storage, `avisos/${avisoId}_${Date.now()}.jpg`);
-               await uploadBytes(storageRef, arquivoFinal);
-               const publicFotoUrl = await getDownloadURL(storageRef);
-               const avisoRef = doc(db, "avisos_rapidos", avisoId);
-               await updateDoc(avisoRef, { fotoUrl: publicFotoUrl, imagemUrl: publicFotoUrl });
-           } catch (bgError) { console.error("❌ [Background] Erro upload aviso:", bgError); }
-         })();
-      }
+    const target = typeof window !== 'undefined' && (window as any).Capacitor ? "_system" : "_blank";
+    window.open(whatsappLink, target);
 
-      setSucesso(`Aviso enviado para ${moradorParaEnvio.nome}!`);
-      setTimeout(() => setSucesso(""), 4000);
-      setModalEnvioAberto(false);
-      setModalAberto(false);
-    } catch (error) { console.error("Erro envio:", error); setErro("Erro ao processar envio."); } finally { setEnviando(false); }
+    setSucesso(`Aviso enviado para ${moradorParaEnvio.nome}!`);
+    setTimeout(() => setSucesso(""), 4000);
+    setModalEnvioAberto(false);
+    setModalAberto(false);
+
+    // 4. BACKGROUND TASK
+    (async () => {
+        try {
+            let publicFotoUrl = "";
+            if (imagemAviso) {
+                const arquivoFinal = await compressImage(imagemAviso);
+                const storageRef = ref(storage, `avisos/${avisoId}_${Date.now()}.jpg`);
+                await uploadBytes(storageRef, arquivoFinal);
+                publicFotoUrl = await getDownloadURL(storageRef);
+            }
+
+            await setDoc(avisoDocRef, {
+                id: avisoId,
+                enviadoPorId: user?.uid || "",
+                enviadoPorNome: user?.nome || "Porteiro",
+                enviadoPorRole: user?.role || "porteiro",
+                moradorId: moradorParaEnvio.id,
+                moradorNome: moradorParaEnvio.nome,
+                moradorTelefone: moradorParaEnvio.telefone || "",
+                condominioId: user?.condominioId || "",
+                blocoId: moradorParaEnvio.blocoId || "",
+                blocoNome: blocoSelecionado?.nome || moradorParaEnvio.blocoNome || "",
+                apartamento: moradorParaEnvio.apartamento,
+                mensagem: mensagemFinal,
+                protocolo: protocoloGerado,
+                fotoUrl: publicFotoUrl,
+                imagemUrl: publicFotoUrl,
+                linkUrl: temFoto ? linkReal : "", 
+                criadoEm: serverTimestamp(),
+                status: "pendente",
+                tipo: "aviso_rapido"
+            });
+            
+        } catch (bgError) {
+            console.error("❌ [Background] Erro:", bgError);
+        }
+    })();
   };
 
   const fecharModal = () => { setModalAberto(false); setBlocoSelecionado(null); setMoradores([]); setTermoBuscaModal(""); };
@@ -277,7 +302,6 @@ function AvisosRapidosPage() {
       return '/dashboard-porteiro/historico-avisos';
   };
 
-  // --- TELA DE CARREGAMENTO (Evita o Flicker) ---
   if (authLoading || !user) {
     return (
         <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 gap-4">
@@ -290,7 +314,6 @@ function AvisosRapidosPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-green-50/30">
       <Navbar />
-      <LoadingOverlay isVisible={enviando} progress={50} message="Processando e enviando..." />
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pt-24">
         <BotaoVoltar url={getBackUrl()} />
         
@@ -305,11 +328,6 @@ function AvisosRapidosPage() {
               <p className="text-gray-600 ml-14">Gerencie os avisos e envie mensagens rapidamente.</p>
           </div>
           
-          {/* 
-             LÓGICA DA TRAVA: 
-             O botão "Configurar Mensagens" SÓ aparece se o usuário for responsável ou admin.
-             Porteiro NÃO vê este botão.
-          */}
           {(user.role === 'responsavel' || user.role === 'adminMaster') && (
              <Link href="/dashboard-responsavel/avisos-rapidos/configuracao">
                 <button className="hidden md:flex items-center gap-2 px-4 py-2 text-sm font-medium text-[#057321] bg-white border border-[#057321] rounded-lg hover:bg-green-50 transition-colors shadow-sm">

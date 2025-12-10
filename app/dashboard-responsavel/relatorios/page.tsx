@@ -136,7 +136,6 @@ function RelatoriosPage() {
           where("retiradoEm", "<=", timestampEnd)
         );
         
-        // Nota: Se der erro de índice no Console, clicar no link fornecido pelo Firebase
         try {
             const snapSaida = await getDocs(qSaida);
             snapSaida.forEach(doc => {
@@ -153,7 +152,7 @@ function RelatoriosPage() {
                 bloco: data.blocoNome,
                 apartamento: data.apartamento,
                 detalhe: `Protocolo: ${data.protocolo}`,
-                registradoPor: "Portaria" // Normalmente quem dá baixa é a portaria
+                registradoPor: "Portaria" 
               });
             });
         } catch (e) {
@@ -192,19 +191,16 @@ function RelatoriosPage() {
         });
       }
 
-      // --- FILTRAGEM EM MEMÓRIA (Refinamento) ---
+      // --- FILTRAGEM EM MEMÓRIA ---
       let filtrados = listaFinal.filter(item => {
-        // Filtro de Bloco
         if (blocoFiltro && item.bloco !== blocoFiltro) return false;
 
-        // Filtro de Porteiro
         if (porteiroFiltro) {
             const registradoPorLower = item.registradoPor.toLowerCase();
             const filtroLower = porteiroFiltro.toLowerCase();
             if (!registradoPorLower.includes(filtroLower)) return false;
         }
 
-        // Filtro de Morador
         if (moradorFiltro) {
           const busca = moradorFiltro.toLowerCase();
           const matchNome = item.destinatario.toLowerCase().includes(busca);
@@ -215,9 +211,7 @@ function RelatoriosPage() {
         return true;
       });
 
-      // Ordenar por data (Cronológica Inversa - Mais recente primeiro)
       filtrados.sort((a, b) => b.dataIso.localeCompare(a.dataIso));
-
       setResultados(filtrados);
 
     } catch (error) {
@@ -286,7 +280,16 @@ function RelatoriosPage() {
     <div className="min-h-screen bg-gray-50">
       <Navbar />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-12">
+      {/* 
+        AJUSTE DE LAYOUT:
+        Substituído 'pt-24' por um cálculo dinâmico.
+        '6rem' (aprox 96px) é o espaço base da Navbar.
+        'env(safe-area-inset-top)' é o espaço extra necessário no topo do celular (iPhone).
+      */}
+      <main 
+        className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12"
+        style={{ paddingTop: 'calc(6rem + env(safe-area-inset-top))' }}
+      >
         <BotaoVoltar url="/dashboard-responsavel" />
 
         <div className="mb-8 flex justify-between items-end">
@@ -360,8 +363,8 @@ function RelatoriosPage() {
 
             {/* Filtro de Porteiro */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
-                 <IdCard size={14}/> Registrado por
+              <label className="flex text-sm font-medium text-gray-700 mb-1 items-center gap-1">
+              <IdCard size={14} /> Registrado por
               </label>
               <select 
                 value={porteiroFiltro}
@@ -463,7 +466,7 @@ function RelatoriosPage() {
                       </td>
                       <td className="px-6 py-3 text-gray-600 text-xs truncate max-w-[250px]" title={item.detalhe}>{item.detalhe}</td>
                       <td className="px-6 py-3 text-gray-600 text-xs font-medium">
-                         {item.registradoPor}
+                          {item.registradoPor}
                       </td>
                     </tr>
                   ))}

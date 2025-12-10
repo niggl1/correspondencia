@@ -12,7 +12,6 @@ import { doc, getDoc, collection, setDoc, Timestamp } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import Navbar from "@/components/Navbar";
 import withAuth from "@/components/withAuth";
-// Adicionei MapPin nas importações
 import { Package, FileText, CheckCircle, Loader2, Building2, Camera, MapPin } from "lucide-react"; 
 import { gerarEtiquetaPDF } from "@/utils/gerarEtiquetaPDF"; 
 import BotaoVoltar from "@/components/BotaoVoltar";
@@ -80,18 +79,14 @@ function NovaCorrespondenciaPorteiroPage() {
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState("Processando...");
   
-  // Estados do formulário
   const [selectedCondominio, setSelectedCondominio] = useState("");
   const [selectedBloco, setSelectedBloco] = useState("");
   const [selectedMorador, setSelectedMorador] = useState("");
   const [observacao, setObservacao] = useState("");
-  
-  // --- NOVO ESTADO: LOCAL DE ARMAZENAMENTO ---
   const [localArmazenamento, setLocalArmazenamento] = useState("Portaria");
 
   const [imagemFile, setImagemFile] = useState<File | null>(null);
 
-  // Estados de sucesso/modal
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [protocolo, setProtocolo] = useState("");
   const [moradorNome, setMoradorNome] = useState("");
@@ -100,22 +95,16 @@ function NovaCorrespondenciaPorteiroPage() {
   const [pdfUrl, setPdfUrl] = useState("");        
   const [linkPublico, setLinkPublico] = useState(""); 
   
-  // --- NOVO ESTADO PARA A MENSAGEM FORMATADA ---
   const [mensagemFormatada, setMensagemFormatada] = useState("");
   
-  // Referência para upload em background
   const backgroundTaskRef = useRef<Promise<void> | null>(null);
 
-  // Rota de voltar fixa para o porteiro
   const backRoute = '/dashboard-porteiro';
-  
-  // Para o porteiro, o ID do condomínio é fixo do usuário logado
   const efetivoCondominioId = condominioId || "";
 
   const handleUpload = (file: File | null) => setImagemFile(file);
   const limparTelefone = (telefone: string) => telefone.replace(/\D/g, "");
 
-  // Buscar dados do morador selecionado (telefone/email)
   useEffect(() => {
     if (!selectedMorador) {
       setTelefoneMorador("");
@@ -139,7 +128,6 @@ function NovaCorrespondenciaPorteiroPage() {
     fetchDadosMorador();
   }, [selectedMorador]);
 
-  // Busca nomes legíveis para o PDF e Banco
   const buscarNomes = async () => {
     let condominioNome = "", blocoNome = "", nomeMorador = "", apartamento = "";
     
@@ -181,32 +169,29 @@ function NovaCorrespondenciaPorteiroPage() {
       const nomes = await buscarNomes();
       const novoProtocolo = `${Math.floor(Date.now() / 1000).toString().slice(-6)}`;
       
-      // 1. Cria referência e Link IMEDIATAMENTE
       const docRef = doc(collection(db, "correspondencias"));
       const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
       const novoLinkPublico = `${baseUrl}/ver/${docRef.id}`;
       setLinkPublico(novoLinkPublico);
 
-      // 2. Otimização de Imagem
       let arquivoFinal = imagemFile;
       let fotoBase64ParaPDF = "";
 
       if (imagemFile) {
-         setMessage("Processando foto...");
-         try {
-             arquivoFinal = await compressImage(imagemFile);
-             setProgress(30);
-             fotoBase64ParaPDF = await fileToBase64(arquivoFinal);
-         } catch (e) {
-             console.error("Erro na compressão, usando original:", e);
-             fotoBase64ParaPDF = await fileToBase64(imagemFile);
-         }
+          setMessage("Processando foto...");
+          try {
+              arquivoFinal = await compressImage(imagemFile);
+              setProgress(30);
+              fotoBase64ParaPDF = await fileToBase64(arquivoFinal);
+          } catch (e) {
+              console.error("Erro na compressão, usando original:", e);
+              fotoBase64ParaPDF = await fileToBase64(imagemFile);
+          }
       }
 
       const nomeUser = user?.nome || "Porteiro";
       const responsavelRegistro = `${nomeUser} (Portaria)`;
 
-      // 3. Gera PDF
       setMessage("Criando etiqueta...");
       const pdfBlob = await gerarEtiquetaPDF({
           protocolo: novoProtocolo,
@@ -217,7 +202,7 @@ function NovaCorrespondenciaPorteiroPage() {
           dataChegada: new Date().toISOString(),
           recebidoPor: responsavelRegistro,
           observacao,
-          localRetirada: localArmazenamento, // Adicionado ao PDF
+          localRetirada: localArmazenamento,
           fotoUrl: fotoBase64ParaPDF,
           logoUrl: "/logo-app-correspondencia.png"
       });
@@ -227,9 +212,6 @@ function NovaCorrespondenciaPorteiroPage() {
       setProtocolo(novoProtocolo);
       setProgress(100);
 
-      // -------------------------------------------------------
-      // NOVO: GERAÇÃO DA MENSAGEM FORMATADA COM O LOCAL CORRETO
-      // -------------------------------------------------------
       const dataAtual = new Date();
       const dataFormatada = dataAtual.toLocaleDateString('pt-BR');
       const horaFormatada = dataAtual.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -253,22 +235,16 @@ ${novoLinkPublico}
 Aguardamos a sua retirada`;
 
       setMensagemFormatada(templateMensagem);
-      // -------------------------------------------------------
 
-
-      // 4. Libera a tela para o Porteiro (Modal de Sucesso Imediato)
       setLoading(false);
       setShowSuccessModal(true);
 
-      // 5. TASK EM BACKGROUND
       backgroundTaskRef.current = (async () => {
           try {
-              // Upload PDF
               const pdfRef = ref(storage, `correspondencias/entrada_${novoProtocolo}_${Date.now()}.pdf`);
               await uploadBytes(pdfRef, pdfBlob);
               const publicPdfUrl = await getDownloadURL(pdfRef);
               
-              // Upload Foto (se houver)
               let publicFotoUrl = "";
               if (arquivoFinal) {
                   const fotoRef = ref(storage, `correspondencias/foto_${novoProtocolo}_${Date.now()}.jpg`);
@@ -276,7 +252,6 @@ Aguardamos a sua retirada`;
                   publicFotoUrl = await getDownloadURL(fotoRef);
               }
 
-              // Salva no Firestore usando o ID gerado no passo 1
               await setDoc(docRef, {
                   condominioId: efetivoCondominioId,
                   blocoId: selectedBloco,
@@ -286,7 +261,7 @@ Aguardamos a sua retirada`;
                   apartamento: nomes.apartamento,
                   protocolo: novoProtocolo,
                   observacao,
-                  localArmazenamento, // Salva no banco
+                  localArmazenamento,
                   status: "pendente", 
                   criadoEm: Timestamp.now(),
                   criadoPor: user?.email || "porteiro",
@@ -319,13 +294,18 @@ Aguardamos a sua retirada`;
       setImagemFile(null);
       setPdfUrl("");
       setLinkPublico("");
-      setMensagemFormatada(""); // Limpa a mensagem
+      setMensagemFormatada("");
       setSelectedMorador(""); 
       setShowSuccessModal(false);
   };
 
+  // ✅ CORREÇÃO PARA CAPACITOR E WEB
   const handleImprimir = () => {
-      if (pdfUrl) window.open(pdfUrl, "_blank");
+      if (pdfUrl) {
+          // Detecta se é Capacitor para usar a abertura de sistema
+          const target = typeof window !== 'undefined' && (window as any).Capacitor ? "_system" : "_blank";
+          window.open(pdfUrl, target);
+      }
   };
 
   const handleReenviarEmail = async () => {
@@ -346,7 +326,6 @@ Aguardamos a sua retirada`;
               emailMorador={emailMorador}
               pdfUrl={pdfUrl}
               linkPublico={linkPublico} 
-              // AQUI PASSAMOS A MENSAGEM NOVA PARA O MODAL
               mensagemFormatada={mensagemFormatada} 
               onClose={handleCloseSuccess}
               onImprimir={handleImprimir}
@@ -372,7 +351,6 @@ Aguardamos a sua retirada`;
           <div className="h-1.5 bg-gradient-to-r from-[#057321] to-[#0a9f2f]"></div>
           <div className="p-6 space-y-6">
             
-            {/* Seleção de Morador */}
             <div className="bg-gray-50 p-5 rounded-xl border border-gray-200 shadow-sm">
               <label className="flex items-center gap-2 text-base font-bold text-gray-800 mb-3">
                 <Package size={20} className="text-[#057321]" /> Destinatário
@@ -386,7 +364,6 @@ Aguardamos a sua retirada`;
               />
             </div>
 
-            {/* --- NOVO CAMPO: LOCAL DE RETIRADA --- */}
             <div>
               <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
                 <MapPin size={18} className="text-[#057321]" /> Local de Retirada
@@ -404,7 +381,6 @@ Aguardamos a sua retirada`;
               </select>
             </div>
 
-            {/* Observações */}
             <div>
               <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
                 <FileText size={18} className="text-[#057321]" /> Detalhes / Observação
@@ -418,7 +394,6 @@ Aguardamos a sua retirada`;
               />
             </div>
 
-            {/* Upload de Foto */}
             <div>
               <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
                 <Camera size={18} className="text-[#057321]" /> Foto da Encomenda (Opcional)
@@ -428,7 +403,6 @@ Aguardamos a sua retirada`;
               </div>
             </div>
 
-            {/* Botão de Ação */}
             <div className="pt-2">
               <button 
                 onClick={salvar} 

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, ComponentType } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, ComponentType } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { Loader2 } from "lucide-react";
 
@@ -12,28 +12,43 @@ export default function withAuth<P extends object>(
   return function ProtectedRoute(props: P) {
     const { user, loading } = useAuth();
     const router = useRouter();
+    const pathname = usePathname();
+    const redirectedRef = useRef(false);
+
+    const fallbackRoute = useMemo(() => {
+      const role = user?.role;
+      switch (role) {
+        case "admin":
+          return "/dashboard-admin";
+        case "responsavel":
+          return "/dashboard-responsavel";
+        case "porteiro":
+          return "/dashboard-porteiro";
+        case "morador":
+          return "/dashboard-morador";
+        default:
+          return "/";
+      }
+    }, [user?.role]);
 
     useEffect(() => {
-      if (!loading) {
-        // 1. Se não estiver logado, manda pro Login
-        if (!user) {
-          router.push("/");
-          return;
-        }
+      if (loading) return;
+      if (redirectedRef.current) return;
 
-        // 2. Se tiver regras de cargo e o usuário não tiver o cargo permitido
-        if (allowedRoles && !allowedRoles.includes(user.role)) {
-          // Redireciona para o painel correto dele para evitar loop ou erro 403
-          switch (user.role) {
-            case "admin": router.push("/dashboard-admin"); break;
-            case "responsavel": router.push("/dashboard-responsavel"); break;
-            case "porteiro": router.push("/dashboard-porteiro"); break;
-            case "morador": router.push("/dashboard-morador"); break;
-            default: router.push("/");
-          }
-        }
+      // 1) Não logado
+      if (!user) {
+        redirectedRef.current = true;
+        if (pathname !== "/") router.replace("/");
+        return;
       }
-    }, [user, loading, router]);
+
+      // 2) Sem permissão
+      if (allowedRoles && !allowedRoles.includes(user.role)) {
+        redirectedRef.current = true;
+        if (pathname !== fallbackRoute) router.replace(fallbackRoute);
+        return;
+      }
+    }, [user, loading, router, allowedRoles, fallbackRoute, pathname]);
 
     if (loading) {
       return (
@@ -44,7 +59,7 @@ export default function withAuth<P extends object>(
       );
     }
 
-    // Evita "flash" de conteúdo proibido antes do redirect acontecer
+    // Evita flash
     if (!user) return null;
     if (allowedRoles && !allowedRoles.includes(user.role)) return null;
 

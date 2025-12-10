@@ -1,14 +1,18 @@
+"use client";
+
 import { useState } from "react";
 import { db } from "@/app/lib/firebase";
-import { 
-  collection, 
-  addDoc, 
-  Timestamp, 
-  query, 
-  where, 
-  orderBy, 
-  getDocs, 
-  limit 
+import {
+  collection,
+  addDoc,
+  Timestamp,
+  query,
+  where,
+  orderBy,
+  getDocs,
+  limit,
+  doc,
+  updateDoc,
 } from "firebase/firestore";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -23,18 +27,36 @@ export interface CriarAvisoRapidoDTO {
   blocoId: string;
   blocoNome: string;
   apartamento: string;
-  mensagem: string;
+  mensagem: string; 
   protocolo?: string;
   fotoUrl?: string;
 }
+
+export type AvisoRapidoStatus = "enviado" | "erro";
 
 export interface AvisoRapido extends CriarAvisoRapidoDTO {
   id: string;
   criadoEm: any;
   dataEnvio: any;
-  status: "enviado" | "erro";
-  imagemUrl?: string; 
+  status: AvisoRapidoStatus;
+  imagemUrl?: string; // legado
+  linkUrl?: string;   // opcional
 }
+
+const normalizeStatus = (s: any): AvisoRapidoStatus => {
+  return s === "erro" ? "erro" : "enviado";
+};
+
+const normalizeAviso = (id: string, data: any): AvisoRapido => {
+  return {
+    id,
+    ...data,
+    status: normalizeStatus(data.status),
+    dataEnvio: data.dataEnvio || data.criadoEm,
+    criadoEm: data.criadoEm,
+    fotoUrl: data.fotoUrl || data.imagemUrl || null,
+  } as AvisoRapido;
+};
 
 export function useAvisosRapidos() {
   const { user } = useAuth();
@@ -43,53 +65,91 @@ export function useAvisosRapidos() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  /**
+   * Cria o aviso rápido e retorna o ID do documento.
+   */
   const registrarAviso = async (dados: CriarAvisoRapidoDTO) => {
     setLoading(true);
+    setError("");
+
     try {
-      const docRef = await addDoc(collection(db, "avisos_rapidos"), {
+      const payload = {
         ...dados,
         criadoEm: Timestamp.now(),
-        dataEnvio: Timestamp.now(), 
+        dataEnvio: Timestamp.now(),
         protocolo: dados.protocolo || null,
         fotoUrl: dados.fotoUrl || null,
-        status: "enviado"
-      });
+        status: "enviado" as const,
+      };
+
+      const docRef = await addDoc(collection(db, "avisos_rapidos"), payload);
       return docRef.id;
     } catch (err: any) {
-      console.error("❌ Erro ao registrar:", err);
+      console.error("❌ Erro ao registrar aviso rápido:", err);
+      setError(err?.message || "Falha ao registrar aviso.");
       throw err;
     } finally {
       setLoading(false);
     }
   };
 
-  const buscarAvisos = async (params?: { condominioId: string }, limite = 50) => {
+  /**
+   * Atualiza a mensagem final do aviso.
+   */
+  const atualizarMensagemAviso = async (
+    avisoId: string,
+    mensagemFinal: string,
+    extras?: {
+      linkUrl?: string;
+      status?: AvisoRapidoStatus;
+      fotoUrl?: string | null;
+    }
+  ) => {
+    if (!avisoId) throw new Error("avisoId inválido para atualizarMensagemAviso");
+    setLoading(true);
+    setError("");
+
+    try {
+      const updatePayload: Record<string, any> = {
+        mensagem: mensagemFinal,
+      };
+
+      if (extras?.linkUrl !== undefined) updatePayload.linkUrl = extras.linkUrl;
+      if (extras?.status !== undefined) updatePayload.status = extras.status;
+      if (extras?.fotoUrl !== undefined) updatePayload.fotoUrl = extras.fotoUrl;
+
+      await updateDoc(doc(db, "avisos_rapidos", avisoId), updatePayload);
+      return true;
+    } catch (err: any) {
+      console.error("❌ Erro ao atualizar mensagem do aviso:", err);
+      setError(err?.message || "Falha ao atualizar mensagem do aviso.");
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const buscarAvisos = async (params?: { condominioId: string }, limiteBusca = 50) => {
     const targetCondominio = params?.condominioId || condominioId;
     if (!targetCondominio) return [];
-    
+
     setLoading(true);
+    setError("");
+
     try {
       const avisosRef = collection(db, "avisos_rapidos");
       const q = query(
         avisosRef,
         where("condominioId", "==", targetCondominio),
         orderBy("criadoEm", "desc"),
-        limit(limite)
+        limit(limiteBusca)
       );
 
       const snapshot = await getDocs(q);
-      return snapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          ...data,
-          status: (data.status === "enviado" || data.status === "erro") ? data.status : "enviado",
-          dataEnvio: data.criadoEm || data.dataEnvio 
-        };
-      }) as AvisoRapido[];
-      
+      return snapshot.docs.map((d) => normalizeAviso(d.id, d.data()));
     } catch (err: any) {
-      console.error("❌ Erro ao buscar avisos:", err);
+      console.error("❌ Erro ao buscar avisos rápidos:", err);
+      setError(err?.message || "Falha ao buscar avisos.");
       return [];
     } finally {
       setLoading(false);
@@ -101,10 +161,12 @@ export function useAvisosRapidos() {
     if (!condId) return [];
 
     setLoading(true);
+    setError("");
+
     try {
       const hoje = new Date();
       hoje.setHours(0, 0, 0, 0);
-      
+
       const amanha = new Date(hoje);
       amanha.setDate(hoje.getDate() + 1);
 
@@ -117,19 +179,10 @@ export function useAvisosRapidos() {
       );
 
       const snapshot = await getDocs(q);
-
-      return snapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          ...data,
-          status: (data.status === "enviado" || data.status === "erro") ? data.status : "enviado",
-          dataEnvio: data.criadoEm || data.dataEnvio 
-        };
-      }) as AvisoRapido[];
-
+      return snapshot.docs.map((d) => normalizeAviso(d.id, d.data()));
     } catch (err: any) {
-      console.error("❌ Erro busca hoje:", err);
+      console.error("❌ Erro ao buscar avisos de hoje:", err);
+      setError(err?.message || "Falha ao buscar avisos de hoje.");
       return [];
     } finally {
       setLoading(false);
@@ -138,6 +191,7 @@ export function useAvisosRapidos() {
 
   return {
     registrarAviso,
+    atualizarMensagemAviso,
     buscarAvisos,
     buscarAvisosHoje,
     loading,

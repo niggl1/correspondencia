@@ -10,63 +10,36 @@ interface GerarReciboPDFParams {
   onProgress?: (progress: number) => void;
 }
 
-// Timeout máximo por imagem (6 segundos)
 const IMAGE_TIMEOUT_MS = 6000;
 
 async function fetchAndCompressImage(url: string, isPhoto: boolean = false): Promise<string> {
   if (!url) return "";
   if (url.startsWith("data:")) return url;
 
-  // Promessa de download e processamento
   const processPromise = new Promise<string>(async (resolve) => {
     try {
       const response = await fetch(url, { mode: 'cors' });
-      if (!response.ok) {
-        resolve(""); 
-        return;
-      }
+      if (!response.ok) { resolve(""); return; }
       const blob = await response.blob();
       const img = await createImageBitmap(blob);
-      
-      // OTIMIZAÇÃO AGRESSIVA: 350px é suficiente para recibo
       const MAX_WIDTH = isPhoto ? 350 : 200; 
       let width = img.width;
       let height = img.height;
-
-      if (width > MAX_WIDTH) {
-        height = height * (MAX_WIDTH / width);
-        width = MAX_WIDTH;
-      }
-
+      if (width > MAX_WIDTH) { height = height * (MAX_WIDTH / width); width = MAX_WIDTH; }
       const canvas = document.createElement('canvas');
       canvas.width = width;
       canvas.height = height;
       const ctx = canvas.getContext('2d');
       if (!ctx) { resolve(""); return; }
-
       ctx.drawImage(img, 0, 0, width, height);
-
-      // Qualidade 0.5 (Rápido e leve)
-      if (isPhoto) {
-        resolve(canvas.toDataURL('image/jpeg', 0.5));
-      } else {
-        resolve(canvas.toDataURL('image/png'));
-      }
-    } catch (error) {
-      console.warn("Falha img:", url);
-      resolve("");
-    }
+      resolve(canvas.toDataURL(isPhoto ? 'image/jpeg' : 'image/png', isPhoto ? 0.5 : undefined));
+    } catch (error) { resolve(""); }
   });
 
-  // Promessa de Timeout
   const timeoutPromise = new Promise<string>((resolve) => {
-    setTimeout(() => {
-      console.warn("Timeout imagem:", url);
-      resolve(""); // Retorna vazio se estourar o tempo
-    }, IMAGE_TIMEOUT_MS);
+    setTimeout(() => { resolve(""); }, IMAGE_TIMEOUT_MS);
   });
 
-  // Retorna quem terminar primeiro (Race Condition)
   return Promise.race([processPromise, timeoutPromise]);
 }
 
@@ -87,7 +60,6 @@ export async function gerarReciboPDF({
     v: dadosRetirada.codigoVerificacao
   });
 
-  // Inicia tarefas em paralelo com Timeout Individual
   const tasks = [
     { id: 'logo', fn: () => logoUrl ? fetchAndCompressImage(logoUrl, false) : Promise.resolve("") },
     { id: 'foto', fn: () => dadosRetirada.fotoComprovanteUrl ? fetchAndCompressImage(dadosRetirada.fotoComprovanteUrl, true) : Promise.resolve("") },
@@ -97,48 +69,33 @@ export async function gerarReciboPDF({
   ];
 
   let completedCount = 0;
-  
   const results = await Promise.all(tasks.map(async (task) => {
     const res = await task.fn();
     completedCount++;
-    // Barra de progresso mais fluida
-    const percent = 5 + Math.round((completedCount / tasks.length) * 85);
-    if (onProgress) onProgress(percent);
+    if (onProgress) onProgress(5 + Math.round((completedCount / tasks.length) * 85));
     return res;
   }));
 
-  const [
-    logoBase64,
-    fotoBase64,
-    assinaturaMoradorBase64,
-    assinaturaPorteiroBase64,
-    qrCodeBase64
-  ] = results;
+  const [logoBase64, fotoBase64, assinaturaMoradorBase64, assinaturaPorteiroBase64, qrCodeBase64] = results;
 
   if (onProgress) onProgress(95);
 
-  // --- CRIAÇÃO DO PDF (Síncrona - jsPDF) ---
   const doc = new jsPDF({ compress: true });
-  
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 15;
   const contentWidth = pageWidth - (margin * 2);
-
   let yPosition = 15;
 
-  // 1. Cabeçalho
+  // CABEÇALHO
   const headerHeight = 30;
   doc.setFillColor(5, 115, 33);
   doc.rect(0, 0, pageWidth, headerHeight, "F");
-
   if (logoBase64) doc.addImage(logoBase64, "PNG", margin, 5, 18, 18);
-
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(18);
   doc.setFont("helvetica", "bold");
-  doc.text("RECIBO DE RETIRADA", pageWidth / 2, 14, { align: "center" });
-  
+  doc.text("RECIBO DE RETIRADA", pageWidth / 2, 14, { align: "center" }); // TÍTULO CORRIGIDO
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
   doc.text(nomeCondominio, pageWidth / 2, 22, { align: "center" });
@@ -146,38 +103,31 @@ export async function gerarReciboPDF({
   yPosition = headerHeight + 10;
   const lineHeight = 5.5;
 
-  // 2. Dados Correspondência
+  // DADOS DA CORRESPONDÊNCIA
   doc.setFillColor(5, 115, 33);
   doc.roundedRect(margin, yPosition, contentWidth, 7, 1, 1, "F");
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(10);
   doc.setFont("helvetica", "bold");
   doc.text("DADOS DA CORRESPONDÊNCIA", margin + 3, yPosition + 5);
-  
   yPosition += 7;
-  const boxHeightCorr = 38;
   doc.setDrawColor(5, 115, 33);
   doc.setLineWidth(0.2);
-  doc.rect(margin, yPosition, contentWidth, boxHeightCorr); 
+  doc.rect(margin, yPosition, contentWidth, 38); 
   yPosition += 5;
   doc.setTextColor(0, 0, 0);
   doc.setFontSize(9);
 
-  // --- LÓGICA DE TRATAMENTO DE DADOS (CORREÇÃO) ---
   const dataEntrada = correspondencia.dataChegada || correspondencia.criadoEm || new Date();
-  const remetenteFinal = correspondencia.remetente || correspondencia.entregador || "Portaria / Administração";
-  const destinatarioFinal = correspondencia.moradorNome || correspondencia.destinatario || "Morador";
-  const blocoFinal = correspondencia.blocoNome || correspondencia.bloco || "";
-  const aptoFinal = correspondencia.apartamento || correspondencia.unidade || "";
+  let dataEntradaFmt = "N/D";
+  try { dataEntradaFmt = new Date(dataEntrada).toLocaleString("pt-BR"); } catch (e) { dataEntradaFmt = String(dataEntrada); }
 
   const infoCorrespondencia = [
     ["Protocolo:", correspondencia.protocolo || "N/A"],
-    // Removemos a linha "Tipo" se for N/A ou vazia
-    ...(correspondencia.tipo && correspondencia.tipo !== "N/A" ? [["Tipo:", correspondencia.tipo]] : []),
-    ["Remetente:", remetenteFinal],
-    ["Destinatário:", destinatarioFinal],
-    ["Bloco/Apto:", `${blocoFinal} - ${aptoFinal}`],
-    ["Data de Entrada:", new Date(dataEntrada).toLocaleDateString("pt-BR")],
+    ["Remetente:", correspondencia.remetente || "Portaria"],
+    ["Destinatário:", correspondencia.moradorNome || "Morador"],
+    ["Bloco/Apto:", `${correspondencia.blocoNome || ""} - ${correspondencia.apartamento || ""}`],
+    ["Chegou em:", dataEntradaFmt],
   ];
 
   infoCorrespondencia.forEach(([label, value]) => {
@@ -188,16 +138,15 @@ export async function gerarReciboPDF({
     yPosition += lineHeight;
   });
 
-  yPosition = (headerHeight + 10) + 7 + boxHeightCorr + 8;
+  yPosition = headerHeight + 10 + 7 + 38 + 8;
 
-  // 3. Dados Retirada
+  // DADOS DA RETIRADA
   doc.setFillColor(5, 115, 33);
   doc.roundedRect(margin, yPosition, contentWidth, 7, 1, 1, "F");
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
   doc.text("DADOS DA RETIRADA", margin + 3, yPosition + 5);
-  
   yPosition += 7;
   let boxHeightRet = 32;
   if (dadosRetirada.observacoes && dadosRetirada.observacoes.length > 50) boxHeightRet += 8;
@@ -208,7 +157,7 @@ export async function gerarReciboPDF({
   doc.setFontSize(9);
 
   const infoRetirada = [
-    ["Data/Hora:", new Date(dadosRetirada.dataHoraRetirada).toLocaleString("pt-BR")],
+    ["Retirado em:", new Date(dadosRetirada.dataHoraRetirada).toLocaleString("pt-BR")],
     ["Retirado por:", dadosRetirada.nomeQuemRetirou],
     ["Documento (CPF):", dadosRetirada.cpfQuemRetirou || "Não informado"],
     ["Porteiro resp.:", dadosRetirada.nomePorteiro],
@@ -224,11 +173,10 @@ export async function gerarReciboPDF({
     yPosition += lineHeight * lines.length;
   });
 
-  yPosition = (headerHeight + 10 + 7 + boxHeightCorr + 8) + 7 + boxHeightRet + 8;
+  yPosition = (headerHeight + 10 + 7 + 38 + 8) + 7 + boxHeightRet + 8;
 
-  // 4. Assinaturas
+  // ASSINATURAS
   if (yPosition > pageHeight - 70) { doc.addPage(); yPosition = 15; }
-
   if (assinaturaMoradorBase64 || assinaturaPorteiroBase64) {
     doc.setFontSize(10);
     doc.setFont("helvetica", "bold");
@@ -236,7 +184,6 @@ export async function gerarReciboPDF({
     yPosition += 3;
     const sigW = 50;
     const sigH = 20;
-
     if (assinaturaMoradorBase64) {
       doc.addImage(assinaturaMoradorBase64, "PNG", margin, yPosition, sigW, sigH);
       doc.setLineWidth(0.1);
@@ -245,7 +192,6 @@ export async function gerarReciboPDF({
       doc.setFont("helvetica", "normal");
       doc.text("Morador/Retirante", margin, yPosition + sigH + 3);
     }
-
     if (assinaturaPorteiroBase64) {
       const xPorteiro = pageWidth - margin - sigW;
       doc.addImage(assinaturaPorteiroBase64, "PNG", xPorteiro, yPosition, sigW, sigH);
@@ -256,13 +202,9 @@ export async function gerarReciboPDF({
     yPosition += sigH + 8;
   }
 
-  // 5. Validação
+  // VALIDAÇÃO
   const validationFrameHeight = 55;
-  if (yPosition + validationFrameHeight > pageHeight - 10) {
-    doc.addPage();
-    yPosition = 15;
-  }
-
+  if (yPosition + validationFrameHeight > pageHeight - 10) { doc.addPage(); yPosition = 15; }
   doc.setFillColor(230, 230, 230);
   doc.rect(margin, yPosition, contentWidth, 6, "F");
   doc.setDrawColor(150, 150, 150);
@@ -275,10 +217,8 @@ export async function gerarReciboPDF({
   const frameYStart = yPosition + 6;
   const frameHeightInner = validationFrameHeight - 6;
   const columnWidth = contentWidth / 2;
-
   doc.line(margin + columnWidth, frameYStart, margin + columnWidth, yPosition + validationFrameHeight);
 
-  // Foto
   if (fotoBase64) {
     try {
       const imgProps = doc.getImageProperties(fotoBase64);
@@ -294,10 +234,9 @@ export async function gerarReciboPDF({
   } else {
     doc.setFontSize(8);
     doc.setTextColor(150, 150, 150);
-    doc.text(dadosRetirada.fotoComprovanteUrl ? "(Erro ao carregar imagem)" : "Sem foto", margin + (columnWidth/2), frameYStart + (frameHeightInner/2), { align: "center" });
+    doc.text(dadosRetirada.fotoComprovanteUrl ? "(Erro imagem)" : "Sem foto", margin + (columnWidth/2), frameYStart + (frameHeightInner/2), { align: "center" });
   }
 
-  // QR Code
   if (qrCodeBase64) {
     const qrSize = 35;
     const xQr = margin + columnWidth + (columnWidth - qrSize) / 2;
@@ -318,26 +257,4 @@ export async function gerarReciboPDF({
 
   if (onProgress) onProgress(100);
   return doc.output("blob");
-}
-
-export async function downloadReciboPDF(
-  params: GerarReciboPDFParams,
-  nomeArquivo?: string
-): Promise<void> {
-  const pdfBlob = await gerarReciboPDF(params);
-  const url = URL.createObjectURL(pdfBlob);
-  
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = nomeArquivo || `recibo-${params.correspondencia.protocolo}.pdf`;
-  link.click();
-  
-  URL.revokeObjectURL(url);
-}
-
-export async function visualizarReciboPDF(params: GerarReciboPDFParams): Promise<void> {
-  const pdfBlob = await gerarReciboPDF(params);
-  const url = URL.createObjectURL(pdfBlob);
-  window.open(url, "_blank");
-  setTimeout(() => URL.revokeObjectURL(url), 60000);
 }

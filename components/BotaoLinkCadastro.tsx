@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { db } from "@/app/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
-import { Link as LinkIcon, Check } from "lucide-react";
+import { Link as LinkIcon, Check, Share2 } from "lucide-react";
 
 export default function BotaoLinkCadastro() {
   const { user } = useAuth();
@@ -31,33 +31,54 @@ export default function BotaoLinkCadastro() {
     fetchCnpj();
   }, [user]);
 
-  const copiarLinkCadastro = () => {
+  const compartilharLink = async () => {
     if (!cnpjCondominio) return alert("CNPJ não encontrado ou carregando...");
 
-    // Gera o link com o parâmetro ?cnpj=...
-    const baseUrl = window.location.origin;
-    const link = `${baseUrl}/cadastro-morador?cnpj=${cnpjCondominio}`;
+    // 🚀 CORREÇÃO CRÍTICA PARA APP:
+    // Usa a URL pública (Vercel) se definida, senão usa a origem (Localhost)
+    // Isso garante que o link funcione quando enviado pelo WhatsApp
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
+    
+    // Remove barra no final para evitar duplicidade (ex: .com//cadastro)
+    const cleanBase = baseUrl.replace(/\/$/, "");
+    const link = `${cleanBase}/cadastro-morador?cnpj=${cnpjCondominio}`;
 
+    // Tenta usar o compartilhamento nativo do celular (Melhor UX)
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Cadastro no App Correspondência',
+          text: 'Utilize este link para se cadastrar no condomínio:',
+          url: link
+        });
+        return; // Se compartilhou, não precisa copiar
+      } catch (err) {
+        // Se o usuário cancelou ou deu erro, cai no fallback de copiar abaixo
+        console.log("Compartilhamento cancelado, copiando para area de transferência...");
+      }
+    }
+
+    // Fallback: Copiar para área de transferência
     navigator.clipboard.writeText(link);
     setCopiado(true);
-    
-    // Volta o ícone ao normal após 3 segundos
     setTimeout(() => setCopiado(false), 3000);
   };
 
-  if (loading || !cnpjCondominio) return null; // Não mostra se não tiver CNPJ
+  if (loading || !cnpjCondominio) return null;
 
   return (
     <button
-      onClick={copiarLinkCadastro}
-      className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold transition-all shadow-sm text-sm sm:text-base whitespace-nowrap ${
+      onClick={compartilharLink}
+      className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold transition-all shadow-sm text-sm sm:text-base whitespace-nowrap active:scale-95 ${
         copiado 
           ? "bg-green-600 text-white border-2 border-green-600" 
           : "bg-white text-[#057321] border-2 border-[#057321] hover:bg-green-50"
       }`}
-      title="Copiar link para enviar aos moradores"
+      title="Compartilhar link de cadastro"
     >
-      {copiado ? <Check size={18} /> : <LinkIcon size={18} />}
+      {/* Mostra ícone de Compartilhar se não tiver copiado ainda */}
+      {copiado ? <Check size={18} /> : <Share2 size={18} />}
+      
       {copiado ? "Link Copiado!" : "Link de Cadastro"}
     </button>
   );

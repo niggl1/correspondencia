@@ -12,7 +12,15 @@ import {
   ExternalLink, AlertCircle, RefreshCcw, Search, Calendar, Package 
 } from "lucide-react";
 
-// --- FUNÇÕES AUXILIARES ---
+// --- FUNÇÃO AUXILIAR PARA ABRIR LINKS (HÍBRIDO WEB/APP) ---
+const abrirLinkExterno = (url?: string | null) => {
+  if (!url) return;
+  const isCapacitor = typeof window !== 'undefined' && (window as any).Capacitor;
+  const target = isCapacitor ? "_system" : "_blank";
+  window.open(url, target);
+};
+
+// --- FUNÇÕES AUXILIARES DE DATA ---
 const converterData = (timestamp: any): Date | null => {
   if (!timestamp) return null;
   if (timestamp?.toDate) return timestamp.toDate(); 
@@ -54,9 +62,6 @@ function HistoricoAvisosPorteiroPage() {
   const [loadingLocal, setLoadingLocal] = useState(true);
   const [erro, setErro] = useState<string>("");
 
-  // ✅ CORREÇÃO DO LOOP:
-  // Removidas as funções 'buscarAvisos' e 'buscarAvisosHoje' das dependências.
-  // Agora ele só recarrega se mudar o ID do condomínio ou o Filtro (Hoje/Todos).
   const carregarAvisos = useCallback(async () => {
     if (!user?.condominioId) return;
     
@@ -84,14 +89,12 @@ function HistoricoAvisosPorteiroPage() {
     } finally {
       setLoadingLocal(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.condominioId, filtro]); 
 
   useEffect(() => {
     carregarAvisos();
   }, [carregarAvisos]);
 
-  // ✅ OTIMIZAÇÃO: Filtragem local instantânea
   const avisosFiltrados = useMemo(() => {
     if (!termoBusca.trim()) return avisos;
     
@@ -228,14 +231,13 @@ function HistoricoAvisosPorteiroPage() {
                   <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 border-t sm:border-t-0 pt-4 sm:pt-0 border-gray-100">
                       
                       {(aviso.fotoUrl || aviso.imagemUrl) && (
-                        <a 
-                        href={aviso.fotoUrl || aviso.imagemUrl} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 text-sm font-bold transition-colors border border-blue-100 w-full sm:w-auto justify-center"
+                        <button 
+                          // ✅ CORREÇÃO AQUI: Adicionado || "" para garantir que é string e atualizado helper para aceitar string | undefined
+                          onClick={() => abrirLinkExterno(aviso.fotoUrl || aviso.imagemUrl || "")}
+                          className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 text-sm font-bold transition-colors border border-blue-100 w-full sm:w-auto justify-center"
                         >
                             <ImageIcon size={16} /> Ver Foto <ExternalLink size={12} />
-                        </a>
+                        </button>
                       )}
 
                       <div className="text-right min-w-[140px]">

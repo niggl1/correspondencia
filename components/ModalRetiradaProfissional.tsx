@@ -11,14 +11,46 @@ import UploadImagem from "./UploadImagem";
 import { gerarReciboPDF } from "@/utils/gerarReciboPDF";
 import { LoadingOverlay } from "@/components/LoadingOverlay";
 import ModalSucessoRetirada from "./ModalSucessoRetirada";
-import type { ConfiguracoesRetirada, DadosRetirada } from "@/types/retirada.types";
-import { useTemplates } from "@/hooks/useTemplates"; 
+
+// --- DEFINIÇÃO DE TIPOS INLINE ---
+interface ConfiguracoesRetirada {
+  assinaturaMoradorObrigatoria: boolean;
+  assinaturaPorteiroObrigatoria: boolean;
+  fotoDocumentoObrigatoria: boolean;
+  selfieObrigatoria: boolean;
+  geolocalizacaoObrigatoria: boolean;
+  enviarWhatsApp: boolean;
+  enviarEmail: boolean;
+  enviarSMS: boolean;
+  verificarMoradorAutorizado: boolean;
+  permitirRetiradaTerceiro: boolean;
+  exigirCodigoConfirmacao: boolean;
+  incluirFotoCorrespondencia: boolean;
+  incluirQRCode: boolean;
+  incluirLogoCondominio: boolean;
+  permitirRetiradaParcial: boolean;
+  exigirAvaliacaoServico: boolean;
+}
+
+interface DadosRetirada {
+  nomeQuemRetirou: string;
+  cpfQuemRetirou?: string;
+  telefoneQuemRetirou?: string;
+  nomePorteiro: string;
+  dataHoraRetirada: string;
+  assinaturaMorador?: string;
+  assinaturaPorteiro?: string;
+  observacoes?: string;
+  codigoVerificacao: string;
+  fotoComprovanteUrl?: string;
+}
 
 interface Props {
   correspondencia: any;
   onClose: () => void;
   onSuccess: () => void;
-  embedded?: boolean; 
+  embedded?: boolean;
+  mensagemFormatada?: string;
 }
 
 // --- FUNÇÃO DE COMPRESSÃO ---
@@ -31,65 +63,79 @@ const compressImage = async (file: File): Promise<File> => {
       img.src = event.target?.result as string;
       img.onload = () => {
         const canvas = document.createElement("canvas");
-        const MAX_WIDTH = 500; 
+        const MAX_WIDTH = 500;
         let width = img.width;
         let height = img.height;
+
         if (width > MAX_WIDTH) {
           height = height * (MAX_WIDTH / width);
           width = MAX_WIDTH;
         }
+
         canvas.width = width;
         canvas.height = height;
+
         const ctx = canvas.getContext("2d");
         if (ctx) {
-            ctx.fillStyle = "#FFFFFF";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.drawImage(img, 0, 0, width, height);
+          ctx.fillStyle = "#FFFFFF";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, width, height);
         }
-        canvas.toBlob((blob) => {
-          if (blob) {
-            const newFile = new File([blob], file.name, { type: "image/jpeg", lastModified: Date.now() });
-            resolve(newFile);
-          } else { resolve(file); }
-        }, "image/jpeg", 0.6);
+
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              const newFile = new File([blob], file.name, {
+                type: "image/jpeg",
+                lastModified: Date.now(),
+              });
+              resolve(newFile);
+            } else {
+              resolve(file);
+            }
+          },
+          "image/jpeg",
+          0.6
+        );
       };
     };
   });
 };
 
 const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = (error) => reject(error);
-    });
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = (error) => reject(error);
+  });
 };
 
 export default function ModalRetiradaProfissional({
   correspondencia,
   onClose,
   onSuccess,
-  embedded = false, 
+  embedded = false,
+  mensagemFormatada: mensagemFormatadaProp,
 }: Props) {
-  const { user } = useAuth(); 
+  const { user } = useAuth();
   
-  const { getFormattedMessage } = useTemplates(user?.condominioId || "");
-
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState("Processando...");
   const [error, setError] = useState("");
+
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [finalPdfUrl, setFinalPdfUrl] = useState("");
-  
+  const [linkSistemaFinal, setLinkSistemaFinal] = useState("");
+
   const [mensagemFormatada, setMensagemFormatada] = useState("");
 
   const [moradorPhone, setMoradorPhone] = useState(
-      correspondencia.telefoneMorador || correspondencia.moradorTelefone || ""
+    correspondencia.telefoneMorador || correspondencia.moradorTelefone || ""
   );
   const [moradorEmail, setMoradorEmail] = useState(
-      correspondencia.emailMorador || correspondencia.moradorEmail || ""
+    correspondencia.emailMorador || correspondencia.moradorEmail || ""
   );
 
   const backgroundTaskRef = useRef<Promise<void> | null>(null);
@@ -117,31 +163,36 @@ export default function ModalRetiradaProfissional({
   const [cpfQuemRetirou, setCpfQuemRetirou] = useState("");
   const [telefoneQuemRetirou, setTelefoneQuemRetirou] = useState("");
   const [observacoes, setObservacoes] = useState("");
+
   const [assinaturaMorador, setAssinaturaMorador] = useState<string>("");
   const [assinaturaPorteiro, setAssinaturaPorteiro] = useState<string>("");
+
   const [imagemFile, setImagemFile] = useState<File | null>(null);
   const [salvarPadrao, setSalvarPadrao] = useState(false);
 
   useEffect(() => {
     if (user?.condominioId) carregarConfiguracoes();
     if (user?.uid) carregarAssinaturaPorteiro();
-    
+
     if (!moradorPhone && correspondencia?.moradorId) {
-        carregarDadosMorador();
+      carregarDadosMorador();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, correspondencia]);
 
   async function carregarDadosMorador() {
-     try {
-       if(correspondencia.moradorId) {
-           const docSnap = await getDoc(doc(db, "users", correspondencia.moradorId));
-           if(docSnap.exists()) {
-               const data = docSnap.data();
-               if (data.whatsapp || data.telefone) setMoradorPhone(data.whatsapp || data.telefone);
-               if (data.email) setMoradorEmail(data.email);
-           }
-       }
-    } catch (e) { console.error(e); }
+    try {
+      if (correspondencia.moradorId) {
+        const docSnap = await getDoc(doc(db, "users", correspondencia.moradorId));
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data.whatsapp || data.telefone) setMoradorPhone(data.whatsapp || data.telefone);
+          if (data.email) setMoradorEmail(data.email);
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
   }
 
   async function carregarConfiguracoes() {
@@ -150,7 +201,9 @@ export default function ModalRetiradaProfissional({
       const docRef = doc(db, "condominios", user.condominioId, "configuracoes", "retirada");
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) setConfig(docSnap.data() as ConfiguracoesRetirada);
-    } catch (error) { console.error(error); }
+    } catch (error) {
+      console.error(error);
+    }
   }
 
   async function carregarAssinaturaPorteiro() {
@@ -159,9 +212,11 @@ export default function ModalRetiradaProfissional({
       const docRef = doc(db, "users", user.uid);
       const docSnap = await getDoc(docRef);
       if (docSnap.exists() && docSnap.data()?.assinaturaPadrao) {
-          setAssinaturaPorteiro(docSnap.data()?.assinaturaPadrao);
+        setAssinaturaPorteiro(docSnap.data()?.assinaturaPadrao);
       }
-    } catch (error) { console.error(error); }
+    } catch (error) {
+      console.error(error);
+    }
   }
 
   function gerarCodigoVerificacao(): string {
@@ -172,16 +227,25 @@ export default function ModalRetiradaProfissional({
 
   function removerUndefined(obj: any): any {
     const resultado: any = {};
-    Object.keys(obj).forEach(key => {
+    Object.keys(obj).forEach((key) => {
       if (obj[key] !== undefined) resultado[key] = obj[key];
     });
     return resultado;
   }
 
   async function handleConfirmar() {
-    if (!nomeQuemRetirou.trim()) { setError("Nome de quem retirou é obrigatório"); return; }
-    if (config.assinaturaMoradorObrigatoria && !assinaturaMorador) { setError("Assinatura do morador é obrigatória"); return; }
-    if (!user?.uid || !user?.nome || !user?.condominioId) { setError("Erro de autenticação"); return; }
+    if (!nomeQuemRetirou.trim()) {
+      setError("Nome de quem retirou é obrigatório");
+      return;
+    }
+    if (config.assinaturaMoradorObrigatoria && !assinaturaMorador) {
+      setError("Assinatura do morador é obrigatória");
+      return;
+    }
+    if (!user?.uid || !user?.nome || !user?.condominioId) {
+      setError("Erro de autenticação");
+      return;
+    }
 
     setLoading(true);
     setMessage("Preparando arquivos...");
@@ -190,9 +254,9 @@ export default function ModalRetiradaProfissional({
 
     try {
       if (salvarPadrao && assinaturaPorteiro && user.uid) {
-         updateDoc(doc(db, "users", user.uid), {
-             assinaturaPadrao: assinaturaPorteiro
-         }).catch(e => console.error("Erro ao salvar assinatura padrão:", e));
+        updateDoc(doc(db, "users", user.uid), {
+          assinaturaPadrao: assinaturaPorteiro,
+        }).catch((e) => console.error("Erro ao salvar assinatura padrão:", e));
       }
 
       let arquivoImagemFinal = imagemFile;
@@ -206,7 +270,7 @@ export default function ModalRetiradaProfissional({
         nomeQuemRetirou: nomeQuemRetirou.trim(),
         cpfQuemRetirou: cpfQuemRetirou.trim() || undefined,
         telefoneQuemRetirou: telefoneQuemRetirou.trim() || undefined,
-        nomePorteiro: user?.nome || "Porteiro", 
+        nomePorteiro: user?.nome || "Porteiro",
         dataHoraRetirada: new Date().toISOString(),
         assinaturaMorador: assinaturaMorador || undefined,
         assinaturaPorteiro: assinaturaPorteiro || undefined,
@@ -225,35 +289,46 @@ export default function ModalRetiradaProfissional({
         dadosRetirada: dadosRetiradaBruto,
         nomeCondominio: correspondencia.condominioNome || "Condomínio",
         logoUrl: "/logo-app-correspondencia.png",
-        onProgress: (val) => setProgress(20 + (val * 0.4)) 
+        onProgress: (val) => setProgress(20 + val * 0.4),
       });
 
       setMessage("Finalizando...");
       const timestamp = Date.now();
       const pdfFileName = `recibo_${correspondencia.protocolo}_${timestamp}.pdf`;
       const pdfStorageRef = ref(storage, `correspondencias/${pdfFileName}`);
-      
+
       await uploadBytes(pdfStorageRef, pdfBlob);
       const publicPdfUrl = await getDownloadURL(pdfStorageRef);
-      
-      setFinalPdfUrl(publicPdfUrl); 
-      setProgress(100);
-      
-      const dataHoje = new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
-      
-      const variaveis = {
-        MORADOR: correspondencia.moradorNome,
-        UNIDADE: correspondencia.apartamento || correspondencia.unidade || "",
-        BLOCO: correspondencia.blocoNome || "",
-        PROTOCOLO: correspondencia.protocolo,
-        QUEM_RETIROU: nomeQuemRetirou,
-        DATA_HORA: dataHoje,
-        RASTREIO: correspondencia.rastreio || "N/A",
-        CONDOMINIO: correspondencia.condominioNome || "Condomínio"
-      };
 
-      const msgBase = await getFormattedMessage('PICKUP', variaveis);
-      const msgFinal = `${msgBase}\n\nVer comprovante: ${publicPdfUrl}`;
+      setFinalPdfUrl(publicPdfUrl);
+      setProgress(100);
+
+      const dataHoje = new Date().toLocaleString("pt-BR", {
+        dateStyle: "short",
+        timeStyle: "short",
+      });
+
+      const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
+      
+      // --- CORREÇÃO DO LINK PARA ANDROID (Removendo erro de rota) ---
+      const linkSistema = `${baseUrl}/ver?id=${correspondencia.id}`; 
+      setLinkSistemaFinal(linkSistema);
+
+      // ✅ MENSAGEM PADRONIZADA COM LAYOUT CORRIGIDO
+      const msgFinal = `*CONFIRMAÇÃO DE RETIRADA*
+
+Olá, *${correspondencia.moradorNome}*!
+Unidade: ${correspondencia.apartamento} (${correspondencia.blocoNome})
+
+Sua encomenda foi retirada com sucesso.
+Obrigado!
+
+━━━━━━━━━━━━━━━━
+│ Protocolo: ${correspondencia.protocolo}
+│ Retirado por: ${nomeQuemRetirou.trim()}
+│ Atendido por: ${user?.nome || "Porteiro"}
+│ Retirado em: ${dataHoje}
+━━━━━━━━━━━━━━━━`;
 
       setMensagemFormatada(msgFinal);
 
@@ -261,43 +336,55 @@ export default function ModalRetiradaProfissional({
       setShowSuccessModal(true);
 
       backgroundTaskRef.current = (async () => {
-          try {
-              let fotoUrlFirebase = "";
-              if (arquivoImagemFinal) {
-                  const fotoFileName = `retirada_${correspondencia.protocolo}_${timestamp}.jpg`;
-                  const fotoStorageRef = ref(storage, `retiradas/${fotoFileName}`);
-                  await uploadBytes(fotoStorageRef, arquivoImagemFinal);
-                  fotoUrlFirebase = await getDownloadURL(fotoStorageRef);
-              }
+        try {
+          let fotoUrlFirebase = "";
+          if (arquivoImagemFinal) {
+            const fotoFileName = `retirada_${correspondencia.protocolo}_${timestamp}.jpg`;
+            const fotoStorageRef = ref(storage, `retiradas/${fotoFileName}`);
+            await uploadBytes(fotoStorageRef, arquivoImagemFinal);
+            fotoUrlFirebase = await getDownloadURL(fotoStorageRef);
+          }
 
-              if (fotoUrlFirebase) dadosRetiradaBruto.fotoComprovanteUrl = fotoUrlFirebase;
-              else delete dadosRetiradaBruto.fotoComprovanteUrl; 
-              
-              const dadosRetirada = removerUndefined(dadosRetiradaBruto);
-              const batchWrites = [];
-              
-              const corrRef = doc(db, "correspondencias", correspondencia.id);
-              batchWrites.push(setDoc(corrRef, {
-                  status: "retirada",
-                  retiradoEm: Timestamp.now(),
-                  dadosRetirada,
-                  reciboUrl: publicPdfUrl,
-              }, { merge: true }));
+          if (fotoUrlFirebase) dadosRetiradaBruto.fotoComprovanteUrl = fotoUrlFirebase;
+          else delete dadosRetiradaBruto.fotoComprovanteUrl;
 
-              const retiradaRef = doc(db, "retiradas", `${correspondencia.id}_${Date.now()}`);
-              batchWrites.push(setDoc(retiradaRef, removerUndefined({
+          const dadosRetirada = removerUndefined(dadosRetiradaBruto);
+          const batchWrites = [];
+
+          const corrRef = doc(db, "correspondencias", correspondencia.id);
+          batchWrites.push(
+            setDoc(
+              corrRef,
+              {
+                status: "retirada",
+                retiradoEm: Timestamp.now(),
+                dadosRetirada,
+                reciboUrl: publicPdfUrl,
+              },
+              { merge: true }
+            )
+          );
+
+          const retiradaRef = doc(db, "retiradas", `${correspondencia.id}_${Date.now()}`);
+          batchWrites.push(
+            setDoc(
+              retiradaRef,
+              removerUndefined({
                 correspondenciaId: correspondencia.id,
                 protocolo: correspondencia.protocolo,
-                condominioId: user?.condominioId || "", 
+                condominioId: user?.condominioId || "",
                 ...dadosRetirada,
                 status: "concluida",
                 criadoEm: new Date().toISOString(),
-              })));
+              })
+            )
+          );
 
-              await Promise.all(batchWrites);
-          } catch (bgError) { console.error("❌ [Background] Erro:", bgError); }
+          await Promise.all(batchWrites);
+        } catch (bgError) {
+          console.error("❌ [Background] Erro:", bgError);
+        }
       })();
-
     } catch (err: any) {
       console.error("Erro crítica:", err);
       setError(`Erro: ${err?.message || "Falha ao processar"}`);
@@ -306,45 +393,53 @@ export default function ModalRetiradaProfissional({
   }
 
   const handleCloseSuccess = async () => {
-      if (backgroundTaskRef.current) await backgroundTaskRef.current;
-      onSuccess(); 
+    if (backgroundTaskRef.current) await backgroundTaskRef.current;
+    onSuccess();
   };
 
   if (showSuccessModal) {
-      return (
-          <ModalSucessoRetirada
-            id={correspondencia.id}
-            protocolo={correspondencia.protocolo}
-            moradorNome={correspondencia.moradorNome}
-            telefoneMorador={moradorPhone}
-            emailMorador={moradorEmail}
-            pdfUrl={finalPdfUrl}
-            mensagemFormatada={mensagemFormatada} 
-            onClose={handleCloseSuccess} 
-          />
-      );
+    return (
+      <ModalSucessoRetirada
+        id={correspondencia.id}
+        protocolo={correspondencia.protocolo}
+        moradorNome={correspondencia.moradorNome}
+        telefoneMorador={moradorPhone}
+        emailMorador={moradorEmail}
+        // ✅ Link corrigido sendo passado
+        pdfUrl={linkSistemaFinal} 
+        mensagemFormatada={mensagemFormatada}
+        onClose={handleCloseSuccess}
+      />
+    );
   }
 
-  const wrapperClass = embedded 
-      ? "w-full h-full bg-white flex flex-col"
-      : "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4";
+  const wrapperClass = embedded
+    ? "w-full h-full bg-white flex flex-col"
+    : "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4";
 
   const containerClass = embedded
-      ? "flex-1 overflow-y-auto"
-      : "bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto";
+    ? "flex-1 overflow-y-auto"
+    : "bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto";
 
   return (
     <div className={wrapperClass}>
       <LoadingOverlay isVisible={loading} progress={progress} message={message} />
+
       <div className={containerClass}>
         {!embedded && (
-          /* Header VERDE PADRÃO */
           <div className="bg-[#057321] text-white p-6 rounded-t-lg flex items-center justify-between">
             <div>
               <h2 className="text-2xl font-bold">Registrar Retirada</h2>
-              <p className="text-green-100 text-sm mt-1">Protocolo: {correspondencia.protocolo}</p>
+              <p className="text-green-100 text-sm mt-1">
+                Protocolo: {correspondencia.protocolo}
+              </p>
             </div>
-            <button onClick={onClose} className="text-white hover:bg-[#046119] p-2 rounded-lg transition-colors" disabled={loading}>
+            <button
+              onClick={onClose}
+              className="text-white hover:bg-[#046119] p-2 rounded-lg transition-colors"
+              disabled={loading}
+              type="button"
+            >
               <X size={24} />
             </button>
           </div>
@@ -357,76 +452,130 @@ export default function ModalRetiradaProfissional({
               <p className="text-sm text-red-800">{error}</p>
             </div>
           )}
-          
-           <div className="bg-gray-50 rounded-lg p-4">
+
+          <div className="bg-gray-50 rounded-lg p-4">
             <h3 className="font-semibold text-gray-900 mb-3">Dados da Correspondência</h3>
             <div className="grid grid-cols-2 gap-3 text-sm">
-              <div><span className="text-gray-600">Morador:</span><span className="ml-2 font-medium">{correspondencia.moradorNome}</span></div>
-              <div><span className="text-gray-600">Bloco/Apto:</span><span className="ml-2 font-medium">{correspondencia.blocoNome} - {correspondencia.apartamento}</span></div>
+              <div>
+                <span className="text-gray-600">Morador:</span>
+                <span className="ml-2 font-medium">{correspondencia.moradorNome}</span>
+              </div>
+              <div>
+                <span className="text-gray-600">Bloco/Apto:</span>
+                <span className="ml-2 font-medium">
+                  {correspondencia.blocoNome} - {correspondencia.apartamento}
+                </span>
+              </div>
             </div>
           </div>
 
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Nome de quem retirou *</label>
-              <input type="text" value={nomeQuemRetirou} onChange={(e) => setNomeQuemRetirou(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-[#057321] focus:border-[#057321]" placeholder="Nome completo" disabled={loading} />
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Nome de quem retirou *
+              </label>
+              <input
+                type="text"
+                value={nomeQuemRetirou}
+                onChange={(e) => setNomeQuemRetirou(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-[#057321] focus:border-[#057321]"
+                placeholder="Nome completo"
+                disabled={loading}
+              />
             </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">CPF</label>
-                <input type="text" value={cpfQuemRetirou} onChange={(e) => setCpfQuemRetirou(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-[#057321] focus:border-[#057321]" placeholder="000.000.000-00" disabled={loading} />
+                <input
+                  type="text"
+                  value={cpfQuemRetirou}
+                  onChange={(e) => setCpfQuemRetirou(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-[#057321] focus:border-[#057321]"
+                  placeholder="000.000.000-00"
+                  disabled={loading}
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Telefone</label>
-                <input type="text" value={telefoneQuemRetirou} onChange={(e) => setTelefoneQuemRetirou(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-[#057321] focus:border-[#057321]" placeholder="(00) 00000-0000" disabled={loading} />
+                <input
+                  type="text"
+                  value={telefoneQuemRetirou}
+                  onChange={(e) => setTelefoneQuemRetirou(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-[#057321] focus:border-[#057321]"
+                  placeholder="(00) 00000-0000"
+                  disabled={loading}
+                />
               </div>
             </div>
+
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Foto da Retirada (opcional)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Foto da Retirada (opcional)
+              </label>
               <UploadImagem onUpload={handleUpload} />
             </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Observações</label>
-              <textarea value={observacoes} onChange={(e) => setObservacoes(e.target.value)} rows={3} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-[#057321] focus:border-[#057321]" disabled={loading} />
+              <textarea
+                value={observacoes}
+                onChange={(e) => setObservacoes(e.target.value)}
+                rows={3}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-[#057321] focus:border-[#057321]"
+                disabled={loading}
+              />
             </div>
           </div>
 
           <div className="space-y-4">
             <h3 className="font-semibold text-gray-900">Assinaturas</h3>
-            
+
             {config.assinaturaMoradorObrigatoria && (
-              <AssinaturaDigitalPro 
-                onSave={setAssinaturaMorador} 
-                label="Assinatura do Morador *" 
-                obrigatorio={true} 
+              <AssinaturaDigitalPro
+                onSave={setAssinaturaMorador}
+                label="Assinatura do Morador *"
+                obrigatorio={true}
               />
             )}
-            
-            <div className="space-y-2">
-                <AssinaturaDigitalPro 
-                    onSave={setAssinaturaPorteiro} 
-                    label="Assinatura do Porteiro"
-                />
-                <div className="flex items-center gap-2 pt-1">
-                    <input 
-                        type="checkbox" 
-                        id="salvarPadrao"
-                        checked={salvarPadrao}
-                        onChange={(e) => setSalvarPadrao(e.target.checked)}
-                        className="w-4 h-4 text-[#057321] border-gray-300 rounded focus:ring-[#057321] cursor-pointer"
-                    />
-                    <label htmlFor="salvarPadrao" className="text-sm text-gray-600 cursor-pointer select-none flex items-center gap-1">
-                        Salvar esta assinatura como padrão para <strong>{user?.nome?.split(' ')[0]}</strong>
-                    </label>
-                </div>
-            </div>
 
+            <div className="space-y-2">
+              <AssinaturaDigitalPro onSave={setAssinaturaPorteiro} label="Assinatura do Porteiro" />
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="salvarPadrao"
+                  checked={salvarPadrao}
+                  onChange={(e) => setSalvarPadrao(e.target.checked)}
+                  className="w-4 h-4 text-[#057321] border-gray-300 rounded focus:ring-[#057321] cursor-pointer"
+                />
+                <label
+                  htmlFor="salvarPadrao"
+                  className="text-sm text-gray-600 cursor-pointer select-none flex items-center gap-1"
+                >
+                  Salvar esta assinatura como padrão para{" "}
+                  <strong>{user?.nome?.split(" ")[0]}</strong>
+                </label>
+              </div>
+            </div>
           </div>
         </div>
 
         <div className="bg-gray-50 p-6 rounded-b-lg flex justify-end gap-3">
-          <button onClick={onClose} className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-all" disabled={loading}>Cancelar</button>
-          <button onClick={handleConfirmar} disabled={loading} className="flex items-center gap-2 px-6 py-2 bg-[#057321] text-white rounded-lg hover:bg-[#046119] disabled:bg-gray-400 transition-all">
+          <button
+            onClick={onClose}
+            className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-all"
+            disabled={loading}
+            type="button"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleConfirmar}
+            disabled={loading}
+            className="flex items-center gap-2 px-6 py-2 bg-[#057321] text-white rounded-lg hover:bg-[#046119] disabled:bg-gray-400 transition-all"
+            type="button"
+          >
             <Save size={20} />
             {loading ? "Processando..." : "Confirmar Retirada"}
           </button>
@@ -435,4 +584,6 @@ export default function ModalRetiradaProfissional({
     </div>
   );
 }
+
+
 

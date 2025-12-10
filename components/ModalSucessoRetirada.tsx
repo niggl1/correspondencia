@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { CheckCircle, MessageCircle, X, Copy, FileText, Printer } from "lucide-react";
 
 interface Props {
@@ -15,7 +15,7 @@ interface Props {
 }
 
 export default function ModalSucessoRetirada({
-  id, 
+  id,
   protocolo,
   moradorNome,
   telefoneMorador,
@@ -23,35 +23,44 @@ export default function ModalSucessoRetirada({
   mensagemFormatada,
   onClose,
 }: Props) {
-  
   const [copiado, setCopiado] = useState(false);
   const [imprimirSemAssinatura, setImprimirSemAssinatura] = useState(false);
 
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://appcorrespondencia.com.br";
   const linkPublico = `${baseUrl}/ver?id=${id}`;
 
+  const limparTelefone = (telefone: string) => telefone.replace(/\D/g, "");
+
+  const textoFinal = useMemo(() => {
+    const textoBase =
+      mensagemFormatada || `Olá *${moradorNome}*! A correspondência (Protocolo: ${protocolo}) foi retirada.`;
+
+    return `${textoBase}\n\n🔗 *Acesse o recibo digital:*\n${linkPublico}`;
+  }, [mensagemFormatada, moradorNome, protocolo, linkPublico]);
+
+  const whatsappUrl = useMemo(() => {
+    const numeroLimpo = limparTelefone(telefoneMorador || "");
+    if (!numeroLimpo) return "";
+
+    // wa.me exige APENAS dígitos. Sem "+".
+    const numeroComDdi = numeroLimpo.startsWith("55") ? numeroLimpo : `55${numeroLimpo}`;
+
+    return `https://wa.me/${numeroComDdi}?text=${encodeURIComponent(textoFinal)}`;
+  }, [telefoneMorador, textoFinal]);
+
   const handleWhatsApp = () => {
     if (!telefoneMorador) {
       alert("Telefone do morador não disponível.");
       return;
     }
-
-    let textoBase = mensagemFormatada;
-    if (!textoBase) {
-      textoBase = `Olá *${moradorNome}*! A correspondência (Protocolo: ${protocolo}) foi retirada.`;
+    if (!whatsappUrl) {
+      alert("Não foi possível montar o link do WhatsApp.");
+      return;
     }
-
-    const textoFinal = `${textoBase}\n\n🔗 *Acesse o recibo digital:*\n${linkPublico}`;
-    const numeroLimpo = telefoneMorador.replace(/\D/g, "");
-    const numeroComPrefixo = numeroLimpo.startsWith('55') ? `+${numeroLimpo}` : `+55${numeroLimpo}`;
-    
-    window.open(`https://wa.me/${numeroComPrefixo}?text=${encodeURIComponent(textoFinal)}`, "_blank");
+    window.open(whatsappUrl, "_blank");
   };
 
   const handleCopiarTexto = () => {
-    let textoBase = mensagemFormatada || `Correspondência ${protocolo} retirada.`;
-    const textoFinal = `${textoBase}\n\nRecibo: ${linkPublico}`;
-    
     navigator.clipboard.writeText(textoFinal).then(() => {
       setCopiado(true);
       setTimeout(() => setCopiado(false), 2000);
@@ -61,9 +70,9 @@ export default function ModalSucessoRetirada({
   const handleImprimir = () => {
     if (imprimirSemAssinatura) {
       // --- GERAÇÃO DE RECIBO FÍSICO (LIMPO) PARA ASSINATURA COM CANETA ---
-      const dataHoje = new Date().toLocaleString('pt-BR');
-      const printWindow = window.open('', '', 'width=800,height=600');
-      
+      const dataHoje = new Date().toLocaleString("pt-BR");
+      const printWindow = window.open("", "", "width=800,height=600");
+
       if (printWindow) {
         printWindow.document.write(`
           <html>
@@ -79,10 +88,7 @@ export default function ModalSucessoRetirada({
                 .signatures { margin-top: 60px; display: flex; justify-content: space-between; gap: 40px; }
                 .sign-box { flex: 1; text-align: center; border-top: 1px solid #000; padding-top: 10px; }
                 .footer { margin-top: 50px; text-align: center; font-size: 12px; color: #999; }
-                @media print {
-                   body { padding: 0; }
-                   button { display: none; }
-                }
+                @media print { body { padding: 0; } }
               </style>
             </head>
             <body>
@@ -134,7 +140,7 @@ export default function ModalSucessoRetirada({
     } else {
       // --- IMPRESSÃO DO PDF DIGITAL (JÁ ASSINADO) ---
       if (pdfUrl) {
-        const win = window.open(pdfUrl, '_blank');
+        const win = window.open(pdfUrl, "_blank");
         win?.focus();
       } else {
         alert("PDF ainda não disponível. Tente novamente em instantes.");
@@ -145,12 +151,12 @@ export default function ModalSucessoRetirada({
   return (
     <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[60] p-4 animate-in fade-in duration-200">
       <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-200">
-        
         {/* HEADER VERDE PADRÃO */}
         <div className="bg-[#057321] p-6 text-center relative">
-          <button 
+          <button
             onClick={onClose}
             className="absolute right-4 top-4 text-white/80 hover:text-white transition-colors"
+            type="button"
           >
             <X size={24} />
           </button>
@@ -167,15 +173,15 @@ export default function ModalSucessoRetirada({
           </p>
 
           <div className="space-y-3">
-            
             <button
               onClick={handleWhatsApp}
               disabled={!telefoneMorador}
               className={`w-full flex items-center justify-center gap-3 py-3.5 rounded-xl text-white font-bold text-lg transition-all shadow-md ${
-                !telefoneMorador 
-                  ? "bg-gray-300 cursor-not-allowed" 
+                !telefoneMorador
+                  ? "bg-gray-300 cursor-not-allowed"
                   : "bg-[#25D366] hover:bg-[#128C7E] hover:-translate-y-0.5"
               }`}
+              type="button"
             >
               <MessageCircle size={24} />
               Avisar no WhatsApp
@@ -184,52 +190,58 @@ export default function ModalSucessoRetirada({
             <button
               onClick={handleCopiarTexto}
               className="w-full flex items-center justify-center gap-3 py-3.5 rounded-xl bg-gray-100 text-gray-700 font-bold hover:bg-gray-200 transition-all shadow-sm"
+              type="button"
             >
-              {copiado ? <CheckCircle size={22} className="text-[#057321]"/> : <Copy size={22} />}
+              {copiado ? <CheckCircle size={22} className="text-[#057321]" /> : <Copy size={22} />}
               {copiado ? "Texto Copiado!" : "Copiar Mensagem"}
             </button>
 
             {/* ÁREA DE IMPRESSÃO E VISUALIZAÇÃO */}
             <div className="grid grid-cols-2 gap-3 pt-2">
-               <button
-                 onClick={handleImprimir}
-                 className="flex items-center justify-center gap-2 py-3 rounded-xl bg-gray-100 text-gray-700 font-bold hover:bg-gray-200 transition-all border border-gray-200"
-               >
-                 <Printer size={20} />
-                 Imprimir
-               </button>
+              <button
+                onClick={handleImprimir}
+                className="flex items-center justify-center gap-2 py-3 rounded-xl bg-gray-100 text-gray-700 font-bold hover:bg-gray-200 transition-all border border-gray-200"
+                type="button"
+              >
+                <Printer size={20} />
+                Imprimir
+              </button>
 
-               {pdfUrl ? (
-                  <a
-                    href={linkPublico}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-center gap-2 py-3 rounded-xl bg-gray-100 text-gray-700 font-bold hover:bg-gray-200 transition-all border border-gray-200"
-                  >
-                    <FileText size={20} />
-                    Ver Recibo
-                  </a>
-               ) : (
-                 <button disabled className="flex items-center justify-center gap-2 py-3 rounded-xl bg-gray-50 text-gray-400 font-bold border border-gray-200 cursor-not-allowed">
-                   Ver Recibo
-                 </button>
-               )}
+              {/* Aqui é "Ver Recibo" (link público), então depende do id/link, não do pdfUrl */}
+              {id ? (
+                <a
+                  href={linkPublico}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 py-3 rounded-xl bg-gray-100 text-gray-700 font-bold hover:bg-gray-200 transition-all border border-gray-200"
+                >
+                  <FileText size={20} />
+                  Ver Recibo
+                </a>
+              ) : (
+                <button
+                  disabled
+                  className="flex items-center justify-center gap-2 py-3 rounded-xl bg-gray-50 text-gray-400 font-bold border border-gray-200 cursor-not-allowed"
+                  type="button"
+                >
+                  Ver Recibo
+                </button>
+              )}
             </div>
 
             {/* CHECKBOX PARA IMPRESSÃO FÍSICA */}
             <div className="flex items-center justify-center gap-2 pt-1">
-                <input 
-                    type="checkbox" 
-                    id="semAssinatura"
-                    checked={imprimirSemAssinatura}
-                    onChange={(e) => setImprimirSemAssinatura(e.target.checked)}
-                    className="w-4 h-4 text-[#057321] border-gray-300 rounded focus:ring-[#057321] cursor-pointer"
-                />
-                <label htmlFor="semAssinatura" className="text-sm text-gray-500 cursor-pointer select-none">
-                    Imprimir sem assinatura digital (Físico)
-                </label>
+              <input
+                type="checkbox"
+                id="semAssinatura"
+                checked={imprimirSemAssinatura}
+                onChange={(e) => setImprimirSemAssinatura(e.target.checked)}
+                className="w-4 h-4 text-[#057321] border-gray-300 rounded focus:ring-[#057321] cursor-pointer"
+              />
+              <label htmlFor="semAssinatura" className="text-sm text-gray-500 cursor-pointer select-none">
+                Imprimir sem assinatura digital (Físico)
+              </label>
             </div>
-
           </div>
         </div>
 
@@ -237,11 +249,11 @@ export default function ModalSucessoRetirada({
           <button
             onClick={onClose}
             className="w-full py-3 text-gray-500 font-semibold hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+            type="button"
           >
             Fechar e Voltar
           </button>
         </div>
-
       </div>
     </div>
   );

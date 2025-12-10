@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useAvisosRapidos } from "@/hooks/useAvisosRapidos";
 import { db, storage } from "@/app/lib/firebase";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { collection, query, where, getDocs, doc, updateDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import Navbar from "@/components/Navbar";
 import BotaoVoltar from "@/components/BotaoVoltar";
@@ -35,9 +35,11 @@ const compressImage = async (file: File): Promise<File> => {
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
+
     reader.onload = (event) => {
       const img = new Image();
       img.src = event.target?.result as string;
+
       img.onload = () => {
         const canvas = document.createElement("canvas");
         const MAX_WIDTH = 600;
@@ -51,6 +53,7 @@ const compressImage = async (file: File): Promise<File> => {
 
         canvas.width = width;
         canvas.height = height;
+
         const ctx = canvas.getContext("2d");
         ctx?.drawImage(img, 0, 0, width, height);
 
@@ -70,8 +73,10 @@ const compressImage = async (file: File): Promise<File> => {
           0.4
         );
       };
+
       img.onerror = () => resolve(file);
     };
+
     reader.onerror = () => resolve(file);
   });
 };
@@ -125,28 +130,29 @@ function AvisosRapidosPage() {
   const [message, setMessage] = useState("Processando...");
 
   const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
-  const LINK_SISTEMA = `${baseUrl}/login`;
+  const LINK_SISTEMA_FALLBACK = `${baseUrl}/login`;
 
+  // ✅ PADRÃO NOVO
   const MSG_PADRAO = `*AVISO DE CORRESPONDÊNCIA*
 
 Olá, *{{NOME}}*!
-Unidade: {{APTO}}
+Unidade: {{APTO}} ({{BLOCO}})
 
 Você recebeu uma correspondência
 ━━━━━━━━━━━━━━━━
 │ *PROTOCOLO: {{PROTOCOLO}}*
-│ Local: Portaria
+│ Enviado por: {{ENVIADO_POR}}
 ━━━━━━━━━━━━━━━━
 
-*FOTO:*
-{{FOTO}}
+🔗 *Acessar no sistema:*
+{{LINK}}
 
 Aguardamos a sua retirada`;
 
   const [mensagemTemplate, setMensagemTemplate] = useState<string>(MSG_PADRAO);
   const [mostrarConfigMsg, setMostrarConfigMsg] = useState(false);
 
-  const STORAGE_KEY = "aviso_msg_template_v3";
+  const STORAGE_KEY = "aviso_msg_template_v4";
 
   const getBackUrl = () => {
     if (user?.role === "responsavel") return "/dashboard-responsavel";
@@ -192,11 +198,11 @@ Aguardamos a sua retirada`;
       const snapshot = await getDocs(q);
 
       const blocosData: Bloco[] = [];
-      snapshot.forEach((doc) => {
+      snapshot.forEach((d) => {
         blocosData.push({
-          id: doc.id,
-          nome: doc.data().nome,
-          condominioId: doc.data().condominioId,
+          id: d.id,
+          nome: d.data().nome,
+          condominioId: d.data().condominioId,
         });
       });
 
@@ -215,8 +221,10 @@ Aguardamos a sua retirada`;
       setResultadosBusca([]);
       return;
     }
+
     setBuscando(true);
     setErro("");
+
     try {
       const termoLimpo = termoBusca.toLowerCase().trim();
       const q = query(
@@ -228,16 +236,14 @@ Aguardamos a sua retirada`;
       const snapshot = await getDocs(q);
       const resultados: Morador[] = [];
 
-      snapshot.forEach((doc) => {
-        const data = doc.data() as any;
+      snapshot.forEach((d) => {
+        const data = d.data() as any;
         const nome = (data.nome || "").toLowerCase();
-        const apto = (data.unidadeNome || data.apartamento || "")
-          .toString()
-          .toLowerCase();
+        const apto = (data.unidadeNome || data.apartamento || "").toString().toLowerCase();
 
         if (nome.includes(termoLimpo) || apto.includes(termoLimpo)) {
           resultados.push({
-            id: doc.id,
+            id: d.id,
             nome: data.nome,
             apartamento: data.unidadeNome || data.apartamento || "?",
             telefone: data.whatsapp || data.telefone || "",
@@ -250,9 +256,7 @@ Aguardamos a sua retirada`;
         }
       });
 
-      const listaFiltrada = resultados.filter(
-        (m) => m.aprovado === true || m.aprovado === undefined
-      );
+      const listaFiltrada = resultados.filter((m) => m.aprovado === true || m.aprovado === undefined);
       setResultadosBusca(listaFiltrada);
       if (listaFiltrada.length === 0) setErro("Nenhum morador encontrado.");
     } catch (err) {
@@ -279,10 +283,10 @@ Aguardamos a sua retirada`;
       const snapshot = await getDocs(q);
 
       let moradoresData: Morador[] = [];
-      snapshot.forEach((doc) => {
-        const data = doc.data() as any;
+      snapshot.forEach((d) => {
+        const data = d.data() as any;
         moradoresData.push({
-          id: doc.id,
+          id: d.id,
           nome: data.nome,
           apartamento: data.unidadeNome || data.apartamento || "?",
           telefone: data.whatsapp || data.telefone || "",
@@ -294,12 +298,8 @@ Aguardamos a sua retirada`;
         });
       });
 
-      moradoresData = moradoresData.filter(
-        (m) => m.aprovado === true || m.aprovado === undefined
-      );
-      moradoresData.sort((a, b) =>
-        a.apartamento.localeCompare(b.apartamento, "pt-BR", { numeric: true })
-      );
+      moradoresData = moradoresData.filter((m) => m.aprovado === true || m.aprovado === undefined);
+      moradoresData.sort((a, b) => a.apartamento.localeCompare(b.apartamento, "pt-BR", { numeric: true }));
 
       setMoradores(moradoresData);
       setModalAberto(true);
@@ -327,9 +327,27 @@ Aguardamos a sua retirada`;
   const confirmarEnvio = async () => {
     if (!moradorParaEnvio) return;
 
+    // ✅ DETECÇÃO CAPACITOR/WEB
+    const isCapacitor = typeof window !== 'undefined' && (window as any).Capacitor;
+    let whatsappWindow: Window | null = null;
+
+    // SE FOR WEB: Abre janela IMEDIATAMENTE para evitar bloqueio de popup
+    if (!isCapacitor) {
+        whatsappWindow = window.open("", "_blank");
+        if (whatsappWindow) {
+          whatsappWindow.document.write(`
+            <html>
+              <body style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background-color: #f0f2f5;">
+                <h2 style="color: #057321;">Gerando mensagem...</h2>
+                <p style="color: #666;">Por favor, aguarde enquanto preparamos o envio.</p>
+              </body>
+            </html>
+          `);
+        }
+    }
+
     setEnviando(true);
     setErro("");
-
     setLoading(true);
     setMessage("Iniciando envio...");
     setProgress(10);
@@ -344,8 +362,10 @@ Aguardamos a sua retirada`;
       if (cleanPhone.startsWith("0")) cleanPhone = cleanPhone.substring(1);
       if (cleanPhone.length >= 10 && cleanPhone.length <= 11) cleanPhone = "55" + cleanPhone;
 
-      let publicFotoUrl = "";
+      if (cleanPhone.length < 12) throw new Error("Número de telefone inválido.");
 
+      // ✅ 1) upload da imagem (se houver)
+      let publicFotoUrl = "";
       if (imagemAviso) {
         setProgress(35);
         setMessage("Processando imagem...");
@@ -363,18 +383,23 @@ Aguardamos a sua retirada`;
       setProgress(70);
       setMessage("Salvando no sistema...");
 
+      // ✅ 2) cria doc primeiro (pra pegar ID)
       const avisoId = await registrarAviso({
         enviadoPorId: user?.uid || "",
         enviadoPorNome: user?.nome || "Usuário",
         enviadoPorRole: user?.role || "porteiro",
+
         moradorId: moradorParaEnvio.id,
         moradorNome: moradorParaEnvio.nome,
         moradorTelefone: moradorParaEnvio.telefone || "",
+
         condominioId: user?.condominioId || "",
         blocoId: moradorParaEnvio.blocoId || "",
         blocoNome: blocoSelecionado?.nome || moradorParaEnvio.blocoNome || "",
         apartamento: moradorParaEnvio.apartamento,
-        mensagem: "",
+
+        // placeholder (será atualizado com a mensagem final)
+        mensagem: "Gerando...",
         protocolo: protocoloGerado,
         fotoUrl: publicFotoUrl,
       });
@@ -382,22 +407,44 @@ Aguardamos a sua retirada`;
       setProgress(85);
       setMessage("Gerando link do WhatsApp...");
 
-      const linkParaMensagem = `${baseUrl}/ver/${avisoId}`;
+      const linkDoAviso = `${baseUrl}/ver/${avisoId}`;
+      const enviadoPorNome = user?.nome || "Usuário";
+      const blocoNomeFinal = blocoSelecionado?.nome || moradorParaEnvio.blocoNome || "";
 
-      let mensagemFinal = mensagemTemplate
-        .replace("{{NOME}}", moradorParaEnvio.nome)
-        .replace("{{APTO}}", moradorParaEnvio.apartamento)
-        .replace("{{PROTOCOLO}}", protocoloGerado)
-        .replace("{{LINK}}", LINK_SISTEMA);
+      // ✅ 3) substitui variáveis
+      let mensagemFinal = mensagemTemplate;
+      mensagemFinal = mensagemFinal.replaceAll("{{NOME}}", moradorParaEnvio.nome);
+      mensagemFinal = mensagemFinal.replaceAll("{{APTO}}", moradorParaEnvio.apartamento);
+      mensagemFinal = mensagemFinal.replaceAll("{{BLOCO}}", blocoNomeFinal || "");
+      mensagemFinal = mensagemFinal.replaceAll("{{PROTOCOLO}}", protocoloGerado);
+      mensagemFinal = mensagemFinal.replaceAll("{{ENVIADO_POR}}", enviadoPorNome);
 
-      mensagemFinal = mensagemFinal.replace("{{FOTO}}", linkParaMensagem);
+      mensagemFinal = mensagemFinal.replaceAll("{{LINK}}", linkDoAviso || LINK_SISTEMA_FALLBACK);
+      
+      // ✅ REMOVIDO: Link da foto não vai mais no texto do WhatsApp para evitar URL longa
+      mensagemFinal = mensagemFinal.replaceAll("{{FOTO}}", "");
+
+      // ✅ 4) salva mensagem final no Firestore
+      await updateDoc(doc(db, "avisos_rapidos", avisoId), {
+        mensagem: mensagemFinal,
+        linkUrl: linkDoAviso,
+        fotoUrl: publicFotoUrl || null, // garante padrão
+      });
 
       const whatsappLink = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(mensagemFinal)}`;
 
       setProgress(100);
       setMessage("Abrindo WhatsApp...");
 
-      window.open(whatsappLink, "_blank");
+      // ✅ ABERTURA INTELIGENTE
+      if (isCapacitor) {
+         // App Nativo: Usa _system
+         window.open(whatsappLink, "_system");
+      } else {
+         // Web: Usa a janela que já foi aberta
+         if (whatsappWindow) whatsappWindow.location.href = whatsappLink;
+         else window.open(whatsappLink, "_blank");
+      }
 
       setSucesso(`Aviso enviado para ${moradorParaEnvio.nome}!`);
       setTimeout(() => setSucesso(""), 4000);
@@ -407,9 +454,10 @@ Aguardamos a sua retirada`;
     } catch (error) {
       console.error("Erro envio:", error);
       setErro("Erro ao processar envio.");
+      // Se deu erro na web, fecha a janela que ficou "loading"
+      if (whatsappWindow) whatsappWindow.close();
     } finally {
       setEnviando(false);
-
       setTimeout(() => {
         setLoading(false);
         setProgress(0);
@@ -430,12 +478,10 @@ Aguardamos a sua retirada`;
     return m.nome.toLowerCase().includes(busca) || m.apartamento.toLowerCase().includes(busca);
   });
 
-  // 👇 AQUI ESTÁ A ALTERAÇÃO DO LAYOUT DO CARD 👇
   const renderCardMorador = (morador: Morador) => (
     <button
       key={morador.id}
       onClick={() => prepararEnvio(morador)}
-      // Fundo Branco (bg-white), Borda Verde (border-[#057321])
       className="bg-white border border-[#057321] rounded-xl p-4 transition-all text-left shadow-sm hover:shadow-md group w-full hover:bg-gray-50"
       disabled={enviando}
     >
@@ -446,18 +492,13 @@ Aguardamos a sua retirada`;
         <div className="flex-1 min-w-0">
           <div className="flex flex-col mb-1">
             {morador.blocoNome ? (
-              // Removido o fundo verde (bg-green-100) do nome do bloco
-              <span className="text-xs font-bold text-[#057321] uppercase w-fit mb-1">
-                Bloco {morador.blocoNome}
-              </span>
+              <span className="text-xs font-bold text-[#057321] uppercase w-fit mb-1">Bloco {morador.blocoNome}</span>
             ) : (
               <span className="text-xs font-bold text-gray-500 uppercase bg-gray-100 px-2 py-0.5 rounded w-fit mb-1">
                 Sem Bloco
               </span>
             )}
-            <span className="font-bold text-gray-900 text-lg leading-tight">
-              Apto {morador.apartamento}
-            </span>
+            <span className="font-bold text-gray-900 text-lg leading-tight">Apto {morador.apartamento}</span>
           </div>
           <div className="flex items-center gap-2 mb-2">
             <User className="text-gray-500 flex-shrink-0" size={14} />
@@ -532,43 +573,80 @@ Aguardamos a sua retirada`;
           </button>
         </div>
 
+        {/* ✅ MODAL PADRÃO (Configurar msg WhatsApp) */}
         {mostrarConfigMsg && (
-          <div className="mb-8 bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden animate-fade-in p-6">
-            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4 rounded-r-lg flex items-start gap-3">
-              <AlertTriangle className="text-yellow-600 flex-shrink-0 mt-0.5" size={20} />
-              <div className="text-sm text-yellow-800">
-                <p className="font-bold mb-1">Instruções:</p>
-                <p>
-                  Use: <strong>{"{{NOME}}"}</strong>, <strong>{"{{APTO}}"}</strong>,{" "}
-                  <strong>{"{{PROTOCOLO}}"}</strong> e <strong>{"{{FOTO}}"}</strong> (link da imagem).
-                </p>
+          <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[60] p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden animate-in zoom-in-95">
+              {/* Header */}
+              <div className="bg-gradient-to-r from-[#057321] to-[#046119] px-6 py-5 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="bg-white p-2 rounded-full shadow-sm">
+                    <Settings className="text-[#057321]" size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-white text-lg font-bold leading-tight">Configurar Mensagem do WhatsApp</h3>
+                    <p className="text-green-100 text-xs mt-0.5">Ajuste o modelo usando as variáveis disponíveis</p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setMostrarConfigMsg(false)}
+                  className="bg-white/20 hover:bg-white/30 p-2 rounded-full transition-colors"
+                  disabled={enviando}
+                  aria-label="Fechar"
+                >
+                  <X className="text-white" size={20} />
+                </button>
               </div>
-            </div>
 
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Modelo da Mensagem:</label>
-              <textarea
-                value={mensagemTemplate}
-                onChange={(e) => setMensagemTemplate(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg p-3 h-24 focus:ring-2 focus:ring-[#057321]"
-              />
-            </div>
+              {/* Body */}
+              <div className="p-6">
+                <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-lg flex items-start gap-3 mb-5">
+                  <AlertTriangle className="text-yellow-700 flex-shrink-0 mt-0.5" size={18} />
+                  <div className="text-sm text-yellow-900">
+                    <p className="font-bold mb-1">Variáveis disponíveis:</p>
+                    <p className="leading-relaxed">
+                      <strong>{"{{NOME}}"}</strong>, <strong>{"{{APTO}}"}</strong>, <strong>{"{{BLOCO}}"}</strong>,{" "}
+                      <strong>{"{{PROTOCOLO}}"}</strong>, <strong>{"{{ENVIADO_POR}}"}</strong>,{" "}
+                      <strong>{"{{LINK}}"}</strong>.
+                    </p>
+                  </div>
+                </div>
 
-            <div className="flex gap-3">
-              <button
-                onClick={salvarMensagem}
-                className="flex items-center gap-2 px-4 py-2 bg-[#057321] text-white rounded-lg hover:bg-[#046119] font-medium"
-                disabled={enviando}
-              >
-                <Save size={18} /> Salvar
-              </button>
-              <button
-                onClick={resetarMensagem}
-                className="flex items-center gap-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium"
-                disabled={enviando}
-              >
-                <RotateCcw size={18} /> Padrão
-              </button>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Modelo da Mensagem:</label>
+                <textarea
+                  value={mensagemTemplate}
+                  onChange={(e) => setMensagemTemplate(e.target.value)}
+                  className="w-full border border-gray-300 rounded-xl p-4 h-96 focus:ring-2 focus:ring-[#057321] outline-none"
+                  disabled={enviando}
+                />
+
+                <div className="flex flex-col sm:flex-row gap-3 mt-5">
+                  <button
+                    onClick={salvarMensagem}
+                    className="sm:flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-[#057321] text-white rounded-xl hover:bg-[#046119] font-bold disabled:opacity-60 disabled:cursor-not-allowed"
+                    disabled={enviando}
+                  >
+                    <Save size={18} /> Salvar
+                  </button>
+
+                  <button
+                    onClick={resetarMensagem}
+                    className="sm:flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-gray-200 text-gray-800 rounded-xl hover:bg-gray-300 font-bold disabled:opacity-60 disabled:cursor-not-allowed"
+                    disabled={enviando}
+                  >
+                    <RotateCcw size={18} /> Padrão
+                  </button>
+
+                  <button
+                    onClick={() => setMostrarConfigMsg(false)}
+                    className="sm:flex-1 flex items-center justify-center gap-2 px-4 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-bold disabled:opacity-60 disabled:cursor-not-allowed"
+                    disabled={enviando}
+                  >
+                    Fechar
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -604,9 +682,7 @@ Aguardamos a sua retirada`;
         {resultadosBusca.length > 0 ? (
           <div className="animate-fade-in mb-12">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold text-gray-900">
-                Resultados ({resultadosBusca.length})
-              </h2>
+              <h2 className="text-xl font-bold text-gray-900">Resultados ({resultadosBusca.length})</h2>
               <button
                 onClick={() => {
                   setTermoBusca("");
@@ -661,7 +737,11 @@ Aguardamos a sua retirada`;
                   <p className="text-green-100 text-sm">{moradores.length} moradores</p>
                 </div>
               </div>
-              <button onClick={fecharModal} className="bg-white/20 hover:bg-white/30 p-2 rounded-full" disabled={enviando}>
+              <button
+                onClick={fecharModal}
+                className="bg-white/20 hover:bg-white/30 p-2 rounded-full"
+                disabled={enviando}
+              >
                 <X className="text-white" size={24} />
               </button>
             </div>
@@ -689,9 +769,7 @@ Aguardamos a sua retirada`;
               ) : moradoresFiltradosNoModal.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">Nenhum morador.</div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {moradoresFiltradosNoModal.map(renderCardMorador)}
-                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{moradoresFiltradosNoModal.map(renderCardMorador)}</div>
               )}
             </div>
           </div>

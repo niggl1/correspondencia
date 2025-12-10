@@ -27,6 +27,15 @@ import {
   Filter,
 } from "lucide-react";
 
+// --- FUNÇÃO AUXILIAR PARA ABRIR LINKS (HÍBRIDO WEB/APP) ---
+const abrirLinkExterno = (url?: string | null) => {
+  if (!url) return;
+  // Detecta se está rodando no Capacitor (App Nativo)
+  const isCapacitor = typeof window !== 'undefined' && (window as any).Capacitor;
+  const target = isCapacitor ? "_system" : "_blank";
+  window.open(url, target);
+};
+
 // --- FUNÇÕES AUXILIARES ---
 const converterData = (timestamp: any): Date | null => {
   if (!timestamp) return null;
@@ -65,7 +74,6 @@ function HistoricoAvisosResponsavelPage() {
   const [avisos, setAvisos] = useState<AvisoRapido[]>([]);
   const [filtro, setFiltro] = useState<"todos" | "hoje">("todos");
 
-  // ✅ Filtros pedidos
   const [dataInicio, setDataInicio] = useState("");
   const [dataFim, setDataFim] = useState("");
   const [filtroBloco, setFiltroBloco] = useState("todos");
@@ -73,9 +81,7 @@ function HistoricoAvisosResponsavelPage() {
   const [filtroPorteiro, setFiltroPorteiro] = useState("todos");
   const [termoBusca, setTermoBusca] = useState("");
 
-  // Seleção
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-
   const [loadingLocal, setLoadingLocal] = useState(true);
   const [erro, setErro] = useState<string>("");
 
@@ -88,7 +94,6 @@ function HistoricoAvisosResponsavelPage() {
     setTermoBusca("");
   };
 
-  // ✅ Corrige loop infinito: não depende das funções do hook nas deps
   const carregarAvisos = useCallback(async () => {
     if (!user?.condominioId) return;
 
@@ -99,11 +104,8 @@ function HistoricoAvisosResponsavelPage() {
     try {
       let dados: AvisoRapido[] = [];
 
-      if (filtro === "hoje") {
-        dados = await buscarAvisosHoje(user.condominioId);
-      } else {
-        dados = await buscarAvisos({ condominioId: user.condominioId });
-      }
+      if (filtro === "hoje") dados = await buscarAvisosHoje(user.condominioId);
+      else dados = await buscarAvisos({ condominioId: user.condominioId });
 
       setAvisos(dados || []);
     } catch (error: any) {
@@ -116,7 +118,6 @@ function HistoricoAvisosResponsavelPage() {
     } finally {
       setLoadingLocal(false);
     }
-
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.condominioId, filtro]);
 
@@ -124,7 +125,6 @@ function HistoricoAvisosResponsavelPage() {
     carregarAvisos();
   }, [carregarAvisos]);
 
-  // --- OPÇÕES PARA SELECTS (dinâmicas a partir dos dados carregados) ---
   const opcoesBlocos = useMemo(() => {
     const set = new Set<string>();
     avisos.forEach((a) => {
@@ -158,7 +158,6 @@ function HistoricoAvisosResponsavelPage() {
     return Array.from(set).sort((x, y) => x.localeCompare(y, "pt-BR", { numeric: true }));
   }, [avisos, filtroBloco]);
 
-  // --- FILTRAGEM ---
   const avisosFiltrados = useMemo(() => {
     const termo = termoBusca.trim().toLowerCase();
 
@@ -166,7 +165,6 @@ function HistoricoAvisosResponsavelPage() {
     const fim = dataFim ? new Date(`${dataFim}T23:59:59`) : null;
 
     return avisos.filter((aviso) => {
-      // Busca textual
       const matchTexto =
         !termo ||
         (aviso.moradorNome || "").toLowerCase().includes(termo) ||
@@ -177,25 +175,21 @@ function HistoricoAvisosResponsavelPage() {
 
       if (!matchTexto) return false;
 
-      // Bloco
       if (filtroBloco !== "todos") {
         const b = (aviso.blocoNome || "").trim().toLowerCase();
         if (b !== filtroBloco.trim().toLowerCase()) return false;
       }
 
-      // Unidade / Apartamento
       if (filtroUnidade !== "todos") {
         const u = (aviso.apartamento || "").trim().toLowerCase();
         if (u !== filtroUnidade.trim().toLowerCase()) return false;
       }
 
-      // Porteiro
       if (filtroPorteiro !== "todos") {
         const p = (aviso.enviadoPorNome || "").trim().toLowerCase();
         if (p !== filtroPorteiro.trim().toLowerCase()) return false;
       }
 
-      // Intervalo de datas (de...até...)
       if (inicio || fim) {
         const d = converterData(aviso.dataEnvio);
         if (!d) return false;
@@ -207,13 +201,11 @@ function HistoricoAvisosResponsavelPage() {
     });
   }, [avisos, termoBusca, filtroBloco, filtroUnidade, filtroPorteiro, dataInicio, dataFim]);
 
-  // ✅ Saneia seleção quando filtros mudam (evita exportar coisa "invisível")
   useEffect(() => {
     const visiveis = new Set(avisosFiltrados.map((a) => a.id));
     setSelectedIds((prev) => prev.filter((id) => visiveis.has(id)));
   }, [avisosFiltrados]);
 
-  // --- SELEÇÃO ---
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
@@ -228,7 +220,6 @@ function HistoricoAvisosResponsavelPage() {
     return avisosFiltrados.filter((a) => setSel.has(a.id));
   }, [selectedIds, avisosFiltrados]);
 
-  // --- EXPORTAÇÃO EXCEL ---
   const exportarExcel = () => {
     if (selectedIds.length === 0) return alert("Selecione pelo menos um item.");
     if (selecionadosVisiveis.length === 0)
@@ -250,7 +241,6 @@ function HistoricoAvisosResponsavelPage() {
     XLSX.writeFile(wb, `Avisos_Selecionados_${new Date().toISOString().split("T")[0]}.xlsx`);
   };
 
-  // --- EXPORTAÇÃO PDF ---
   const exportarPDF = () => {
     if (selectedIds.length === 0) return alert("Selecione pelo menos um item.");
     if (selecionadosVisiveis.length === 0)
@@ -297,9 +287,7 @@ function HistoricoAvisosResponsavelPage() {
           </div>
         </div>
 
-        {/* --- BARRA DE CONTROLE --- */}
         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6 flex flex-col gap-4">
-          {/* Linha Superior */}
           <div className="flex flex-col md:flex-row gap-4 justify-between">
             <div className="flex bg-gray-100 p-1 rounded-lg w-full md:w-auto">
               <button
@@ -359,7 +347,6 @@ function HistoricoAvisosResponsavelPage() {
             </div>
           </div>
 
-          {/* Linha Inferior: filtros */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-4 border-t border-gray-100">
             <div>
               <label className="text-xs font-semibold text-gray-500 mb-1 block">Data inicial</label>
@@ -435,7 +422,6 @@ function HistoricoAvisosResponsavelPage() {
           </div>
         </div>
 
-        {/* --- BARRA DE AÇÕES EM MASSA --- */}
         {selectedIds.length > 0 && (
           <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-[#057321] text-white px-6 py-3 rounded-full shadow-xl flex items-center gap-4 animate-in slide-in-from-bottom-10 fade-in duration-300">
             <span className="font-bold text-sm whitespace-nowrap">{selectedIds.length} selecionado(s)</span>
@@ -458,7 +444,6 @@ function HistoricoAvisosResponsavelPage() {
           </div>
         )}
 
-        {/* Erro */}
         {erro && (
           <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6 flex items-center gap-3 animate-fade-in">
             <AlertCircle className="text-red-500" size={24} />
@@ -466,7 +451,6 @@ function HistoricoAvisosResponsavelPage() {
           </div>
         )}
 
-        {/* --- LISTA DE CARDS --- */}
         {loadingLocal ? (
           <div className="text-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#057321] mx-auto"></div>
@@ -499,6 +483,8 @@ function HistoricoAvisosResponsavelPage() {
             <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
               {avisosFiltrados.map((aviso) => {
                 const isSelected = selectedIds.includes(aviso.id);
+                const foto = aviso.fotoUrl || aviso.imagemUrl;
+
                 return (
                   <div
                     key={aviso.id}
@@ -544,15 +530,13 @@ function HistoricoAvisosResponsavelPage() {
                       </div>
 
                       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 border-t sm:border-t-0 pt-4 sm:pt-0 border-gray-100">
-                        {(aviso.fotoUrl || aviso.imagemUrl) && (
-                          <a
-                            href={aviso.fotoUrl || aviso.imagemUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                        {foto && (
+                          <button
+                            onClick={() => abrirLinkExterno(foto)}
                             className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 text-sm font-bold transition-colors border border-blue-100 w-full sm:w-auto justify-center"
                           >
                             <ImageIcon size={16} /> Ver Foto <ExternalLink size={12} />
-                          </a>
+                          </button>
                         )}
 
                         <div className="text-right min-w-[140px]">

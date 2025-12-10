@@ -177,13 +177,17 @@ function MinhaContaPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pt-20 pb-12">
-      <div className="max-w-3xl mx-auto px-4">
+    // AJUSTE: Padding top dinâmico para respeitar o entalhe do iPhone
+    <div 
+      className="min-h-screen bg-gray-50 pb-12 px-4"
+      style={{ paddingTop: 'calc(3rem + env(safe-area-inset-top))' }}
+    >
+      <div className="max-w-3xl mx-auto">
         {/* Cabeçalho */}
         <div className="mb-6">
           <button
             onClick={() => router.back()}
-            className="flex items-center gap-2 text-gray-600 hover:text-gray-800 mb-4"
+            className="flex items-center gap-2 text-gray-600 hover:text-gray-800 mb-4 p-2 -ml-2 rounded-lg active:bg-gray-200 transition-colors"
           >
             <ArrowLeft size={20} />
             Voltar
@@ -347,8 +351,9 @@ function MinhaContaPage() {
 
         {/* Modal de Confirmação de Exclusão */}
         {modalExcluir && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+          // AJUSTE: Adicionado overflow-y-auto para evitar problemas com teclado no mobile
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 relative">
               <h3 className="text-xl font-bold text-gray-900 mb-4">Confirmar Exclusão</h3>
               <p className="text-gray-700 mb-4">
                 Tem certeza que deseja excluir sua conta? Esta ação é <strong>irreversível</strong>.

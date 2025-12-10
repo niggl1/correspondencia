@@ -1,19 +1,11 @@
-import type { Metadata } from "next";
-
-export const metadata: Metadata = {
-  title: "App Correspondência",
-  description: "Gestão inteligente de condomínios",
-};
-
-export default function DashboardLayout({
+export default function DashboardPorteiroLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
-    <>
-      {/* Renderiza o conteúdo da página */}
+    <section className="min-h-screen bg-gray-50">
       {children}
-    </>
+    </section>
   );
 }

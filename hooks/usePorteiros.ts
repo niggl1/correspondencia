@@ -1,4 +1,4 @@
-// hooks/usePorteiros.ts
+"use client";
 
 import { useState, useEffect, useCallback } from 'react'
 import {
@@ -13,8 +13,24 @@ import {
   serverTimestamp,
 } from 'firebase/firestore'
 import { db } from '@/app/lib/firebase'
+// Tipos e Constantes (Se certifique que os caminhos estão corretos)
 import { Porteiro, PorteiroFormData } from '@/types/porteiro.types'
 import { MENSAGENS } from '@/constants/porteiro.constants'
+
+// 👇 DETECÇÃO DE URL PARA API (CRUCIAL PARA CAPACITOR)
+const getApiUrl = (endpoint: string) => {
+  // Se estiver no navegador normal, usa caminho relativo
+  const isCapacitor = typeof window !== 'undefined' && (window as any).Capacitor?.isNativePlatform?.();
+  
+  if (isCapacitor) {
+    // ⚠️ IMPORTANTE: Defina NEXT_PUBLIC_APP_URL no seu .env.local
+    // Se não tiver definido, coloque seu dominio da Vercel hardcoded aqui como fallback
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://sua-url-da-vercel.app"; 
+    return `${baseUrl.replace(/\/$/, '')}${endpoint}`;
+  }
+
+  return endpoint;
+};
 
 interface UsePorteirosReturn {
   porteiros: Porteiro[]
@@ -55,7 +71,7 @@ export const usePorteiros = (condominioId: string): UsePorteirosReturn => {
       },
       (err) => {
         console.error('Erro ao carregar porteiros:', err)
-        setError(MENSAGENS.ERRO.CARREGAR_PORTEIROS)
+        setError(MENSAGENS?.ERRO?.CARREGAR_PORTEIROS || "Erro ao carregar lista.")
         setLoading(false)
       }
     )
@@ -66,8 +82,11 @@ export const usePorteiros = (condominioId: string): UsePorteirosReturn => {
   const criarPorteiro = useCallback(
     async (formData: PorteiroFormData) => {
       try {
-        // Chamar Firebase Function para criar usuário
-        const response = await fetch('/api/criar-porteiro', {
+        const url = getApiUrl('/api/criar-porteiro');
+        console.log("Chamando API em:", url); // Para debug
+
+        // Chamar Firebase Function (Next API Route)
+        const response = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -81,7 +100,7 @@ export const usePorteiros = (condominioId: string): UsePorteirosReturn => {
 
         if (!response.ok) {
           const errorData = await response.json()
-          throw new Error(errorData.message || MENSAGENS.ERRO.SALVAR_PORTEIRO)
+          throw new Error(errorData.message || MENSAGENS?.ERRO?.SALVAR_PORTEIRO || "Erro ao salvar.")
         }
 
         const { uid } = await response.json()
@@ -99,10 +118,10 @@ export const usePorteiros = (condominioId: string): UsePorteirosReturn => {
         })
       } catch (err: any) {
         console.error('Erro ao criar porteiro:', err)
-        if (err.message.includes('email-already-in-use')) {
-          throw new Error(MENSAGENS.ERRO.EMAIL_EM_USO)
+        if (err.message && err.message.includes('email-already-in-use')) {
+          throw new Error(MENSAGENS?.ERRO?.EMAIL_EM_USO || "E-mail já está em uso.")
         }
-        throw new Error(MENSAGENS.ERRO.SALVAR_PORTEIRO)
+        throw new Error(MENSAGENS?.ERRO?.SALVAR_PORTEIRO || "Erro ao criar porteiro.")
       }
     },
     [condominioId]
@@ -121,7 +140,7 @@ export const usePorteiros = (condominioId: string): UsePorteirosReturn => {
         await updateDoc(doc(db, 'porteiros', id), updateData)
       } catch (err) {
         console.error('Erro ao atualizar porteiro:', err)
-        throw new Error(MENSAGENS.ERRO.SALVAR_PORTEIRO)
+        throw new Error(MENSAGENS?.ERRO?.SALVAR_PORTEIRO || "Erro ao atualizar.")
       }
     },
     []
@@ -132,7 +151,7 @@ export const usePorteiros = (condominioId: string): UsePorteirosReturn => {
       await deleteDoc(doc(db, 'porteiros', id))
     } catch (err) {
       console.error('Erro ao excluir porteiro:', err)
-      throw new Error(MENSAGENS.ERRO.EXCLUIR_PORTEIRO)
+      throw new Error(MENSAGENS?.ERRO?.EXCLUIR_PORTEIRO || "Erro ao excluir.")
     }
   }, [])
 
@@ -144,7 +163,7 @@ export const usePorteiros = (condominioId: string): UsePorteirosReturn => {
       })
     } catch (err) {
       console.error('Erro ao alterar status:', err)
-      throw new Error(MENSAGENS.ERRO.ALTERAR_STATUS)
+      throw new Error(MENSAGENS?.ERRO?.ALTERAR_STATUS || "Erro ao alterar status.")
     }
   }, [])
 

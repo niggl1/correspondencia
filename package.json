@@ -18,6 +18,7 @@
     "@capacitor/camera": "^7.0.2",
     "@capacitor/cli": "^7.4.4",
     "@capacitor/core": "^7.4.4",
+    "@capacitor/toast": "^7.0.3",
     "@ionic/pwa-elements": "^3.3.0",
     "@yudiel/react-qr-scanner": "^2.4.1",
     "browser-image-compression": "^2.0.2",

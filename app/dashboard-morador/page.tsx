@@ -22,7 +22,6 @@ export default function DashboardMoradorPage() {
   const [totalCorrespondencias, setTotalCorrespondencias] = useState(0);
   const [pendentes, setPendentes] = useState(0);
   
-  // Agora guardamos o objeto completo do condomínio
   const [dadosCondominio, setDadosCondominio] = useState<any>(null);
   const [linkCopiado, setLinkCopiado] = useState(false);
 
@@ -39,13 +38,12 @@ export default function DashboardMoradorPage() {
             setNomeUsuario(primeiroNome);
             setUnidadeNome(userData.unidadeNome || "-");
 
-            // 2. Buscar Dados Completos do Condomínio (CNPJ, Endereço, Logo)
+            // 2. Buscar Dados Completos do Condomínio
             if (userData.condominioId) {
                 const condDoc = await getDoc(doc(db, "condominios", userData.condominioId));
                 
                 if (condDoc.exists()) {
                     const data = condDoc.data();
-                    // Salva tudo no estado
                     setDadosCondominio({
                         nome: data.nome || "Seu Condomínio",
                         cnpj: data.cnpj || "",
@@ -80,13 +78,17 @@ export default function DashboardMoradorPage() {
   }, []);
 
   const compartilharLink = () => {
-    // Verifica se carregou o CNPJ
     if (!dadosCondominio?.cnpj) {
         alert("O cadastro deste condomínio está incompleto (Sem CNPJ).");
         return;
     }
     
-    const baseUrl = window.location.origin;
+    // AJUSTE CRÍTICO PARA CAPACITOR/MOBILE:
+    // No app mobile, window.location.origin retorna 'capacitor://localhost'
+    // Precisamos forçar o domínio da Web (Vercel) para que o link funcione para quem recebe.
+    // Configure NEXT_PUBLIC_APP_URL no seu .env ou Vercel.
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
+    
     const link = `${baseUrl}/cadastro-morador?cnpj=${dadosCondominio.cnpj.replace(/\D/g, "")}`;
     
     if (navigator.share) {
@@ -104,7 +106,7 @@ export default function DashboardMoradorPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
+      <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <div className="animate-spin rounded-full h-10 w-10 border-b-4 border-[#057321] mx-auto"></div>
           <p className="mt-4 text-gray-500 font-medium">Carregando informações...</p>
@@ -114,15 +116,19 @@ export default function DashboardMoradorPage() {
   }
 
   return (
-    <div className="space-y-6 pb-20"> 
+    // AJUSTE VISUAL: paddingTop com 'env' para não ficar atrás do relógio no iPhone
+    // px-4 adicionado para padding lateral padrão em telas pequenas
+    <div 
+      className="space-y-6 pb-24 px-4 w-full min-h-screen bg-gray-50"
+      style={{ paddingTop: 'max(1.5rem, env(safe-area-inset-top))' }}
+    > 
       
       {/* Boas-vindas */}
-      <div className="bg-gradient-to-r from-[#057321] to-[#046119] text-white p-6 rounded-2xl shadow-md">
+      <div className="bg-gradient-to-r from-[#057321] to-[#046119] text-white p-6 rounded-2xl shadow-md mt-2">
         <div className="flex justify-between items-start">
             <div>
                 <h1 className="text-2xl sm:text-3xl font-bold mb-1">Olá, {nomeUsuario}! 👋</h1>
                 
-                {/* Exibe o nome do condomínio se carregado */}
                 <p className="text-green-100 text-sm sm:text-base flex items-center gap-1">
                     <MapPin size={14} /> 
                     {dadosCondominio?.nome || "Seu Condomínio"}
@@ -133,7 +139,6 @@ export default function DashboardMoradorPage() {
                 </div>
             </div>
             
-            {/* Exibe Logo se existir */}
             {dadosCondominio?.logoUrl && (
                 <img 
                     src={dadosCondominio.logoUrl} 
@@ -198,7 +203,7 @@ export default function DashboardMoradorPage() {
                     {linkCopiado ? "Link copiado!" : "Envie o link de cadastro"}
                 </p>
                 <p className="text-xs text-orange-600 mt-1 font-medium">
-                    O morador só receberá avisos após a ativação do cadastro.
+                    O morador só receberá avisos após a ativação.
                 </p>
             </div>
         </div>
@@ -223,7 +228,7 @@ export default function DashboardMoradorPage() {
       </Link>
 
       {/* Como funciona */}
-      <div className="bg-gray-50 border border-gray-200 p-5 rounded-2xl">
+      <div className="bg-white border border-gray-200 p-5 rounded-2xl shadow-sm">
         <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
             <div className="w-1 h-6 bg-[#057321] rounded-full"></div>
             Como funciona?
@@ -236,7 +241,7 @@ export default function DashboardMoradorPage() {
             "O porteiro registra a entrega e pronto!"
           ].map((item, index) => (
             <li key={index} className="flex items-start gap-3 text-sm text-gray-700">
-                <span className="flex-shrink-0 w-6 h-6 bg-white border border-gray-200 rounded-full flex items-center justify-center text-xs font-bold text-[#057321]">
+                <span className="flex-shrink-0 w-6 h-6 bg-gray-100 border border-gray-200 rounded-full flex items-center justify-center text-xs font-bold text-[#057321]">
                     {index + 1}
                 </span>
                 <span className="mt-0.5">{item}</span>

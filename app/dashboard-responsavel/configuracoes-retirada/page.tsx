@@ -47,6 +47,7 @@ function ConfiguracoesRetiradaPage() {
 
   useEffect(() => {
     carregarConfiguracoes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const carregarConfiguracoes = async () => {
@@ -101,11 +102,6 @@ function ConfiguracoesRetiradaPage() {
     }));
   };
 
-  const handleLogout = async () => {
-    await signOut(auth);
-    router.push("/login");
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -123,10 +119,10 @@ function ConfiguracoesRetiradaPage() {
       <Navbar />
 
       {/* 2. ESPAÇAMENTO CORRETO (pt-20) */}
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-12">
+      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-12">
         
         {/* 3. BOTÃO VOLTAR PADRONIZADO */}
-        <BotaoVoltar url="/dashboard-responsavel" />
+        <BotaoVoltar url="/dashboard-responsavel/registrar-retirada" />
 
         <div className="space-y-6">
             
@@ -291,4 +287,3 @@ function ToggleOption({ label, description, checked, onChange }: ToggleOptionPro
 }
 
 export default withAuth(ConfiguracoesRetiradaPage, ["responsavel", "adminMaster"]);
-

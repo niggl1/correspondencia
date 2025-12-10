@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { auth, db } from "@/app/lib/firebase";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { doc, setDoc, collection, query, where, getDocs } from "firebase/firestore";
-// 🔥 Importando o helper de email
-import { enviarConfirmacaoCadastro } from '../lib/email-helper';
+// 🔥 AJUSTE: Uso de alias '@/' para evitar erros de caminho relativo
+import { enviarConfirmacaoCadastro } from '@/app/lib/email-helper';
 
 export default function CadastroMoradorPage() {
   const router = useRouter();
@@ -195,8 +195,20 @@ export default function CadastroMoradorPage() {
   };
 
   return (
-    <div className="min-h-screen bg-green-50 flex items-center justify-center p-4">
-      <div className="bg-white w-full max-w-md p-8 rounded-2xl shadow-lg space-y-6">
+    // AJUSTE CRÍTICO: 
+    // - overflow-y-auto: Permite rolar a tela se o teclado cobrir os campos.
+    // - minHeight: 100dvh: Altura correta para mobile.
+    // - padding top env(): Respeita o Notch do iPhone.
+    <div 
+        className="bg-green-50 flex justify-center p-4 w-full overflow-y-auto"
+        style={{ 
+            minHeight: '100dvh',
+            paddingTop: 'max(1rem, env(safe-area-inset-top))',
+            paddingBottom: '2rem'
+        }}
+    >
+      {/* 'my-auto' ajuda a centralizar quando há espaço, mas permite scroll quando falta */}
+      <div className="bg-white w-full max-w-md p-8 rounded-2xl shadow-lg space-y-6 my-auto h-fit">
         
         <div className="text-center">
           <div className="mx-auto w-16 h-16 bg-[#057321] rounded-full flex items-center justify-center mb-4">
@@ -217,17 +229,18 @@ export default function CadastroMoradorPage() {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">CNPJ do Condomínio</label>
+              {/* AJUSTE: text-base evita zoom no iPhone */}
               <input 
                 value={cnpj} 
                 onChange={e => setCnpj(e.target.value)} 
-                className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-[#057321] focus:border-transparent"
+                className="w-full border border-gray-300 rounded-lg px-4 py-3 text-base focus:ring-2 focus:ring-[#057321] focus:border-transparent"
                 placeholder="00.000.000/0000-00"
               />
             </div>
             <button 
               onClick={buscarCondominio} 
               disabled={loading}
-              className="w-full bg-[#057321] text-white py-3 rounded-lg font-semibold hover:bg-[#046119] disabled:opacity-50"
+              className="w-full bg-[#057321] text-white py-3 rounded-lg font-semibold hover:bg-[#046119] disabled:opacity-50 transition active:scale-[0.98]"
             >
               {loading ? "Buscando..." : "Continuar"}
             </button>
@@ -241,11 +254,11 @@ export default function CadastroMoradorPage() {
               <strong>Condomínio:</strong> {condominioEncontrado?.nome}
             </div>
 
-            <input value={nome} onChange={e => setNome(e.target.value)} placeholder="Nome Completo" className="w-full px-4 py-3 border rounded-lg" />
-            <input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" className="w-full px-4 py-3 border rounded-lg" />
-            <input value={whatsapp} onChange={e => setWhatsapp(e.target.value)} placeholder="WhatsApp" className="w-full px-4 py-3 border rounded-lg" />
+            <input value={nome} onChange={e => setNome(e.target.value)} placeholder="Nome Completo" className="w-full px-4 py-3 border rounded-lg text-base" />
+            <input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" className="w-full px-4 py-3 border rounded-lg text-base" />
+            <input value={whatsapp} onChange={e => setWhatsapp(e.target.value)} placeholder="WhatsApp" className="w-full px-4 py-3 border rounded-lg text-base" />
             
-            <select value={perfil} onChange={e => setPerfil(e.target.value)} className="w-full px-4 py-3 border rounded-lg bg-white">
+            <select value={perfil} onChange={e => setPerfil(e.target.value)} className="w-full px-4 py-3 border rounded-lg bg-white text-base">
               {PERFIS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
             </select>
 
@@ -255,7 +268,7 @@ export default function CadastroMoradorPage() {
                 <select 
                   value={blocoId} 
                   onChange={e => setBlocoId(e.target.value)} 
-                  className="w-full px-4 py-3 border rounded-lg bg-white"
+                  className="w-full px-4 py-3 border rounded-lg bg-white text-base"
                 >
                   <option value="">Selecione...</option>
                   {blocos.map(b => <option key={b.id} value={b.id}>{b.nome}</option>)}
@@ -271,7 +284,7 @@ export default function CadastroMoradorPage() {
                   value={numeroUnidade} 
                   onChange={e => setNumeroUnidade(e.target.value)} 
                   placeholder="Ex: 101" 
-                  className="w-full px-4 py-3 border rounded-lg" 
+                  className="w-full px-4 py-3 border rounded-lg text-base" 
                 />
               </div>
               <div className="flex-1">
@@ -280,14 +293,14 @@ export default function CadastroMoradorPage() {
                   value={complementoUnidade} 
                   onChange={e => setComplementoUnidade(e.target.value)} 
                   placeholder="Ex: A, Sul" 
-                  className="w-full px-4 py-3 border rounded-lg" 
+                  className="w-full px-4 py-3 border rounded-lg text-base" 
                 />
               </div>
             </div>
 
             <div className="flex gap-3 pt-2">
-              <button onClick={() => setEtapa(1)} className="flex-1 bg-gray-200 py-3 rounded-lg font-semibold">Voltar</button>
-              <button onClick={validarEtapa2} className="flex-1 bg-[#057321] text-white py-3 rounded-lg font-semibold">Continuar</button>
+              <button onClick={() => setEtapa(1)} className="flex-1 bg-gray-200 py-3 rounded-lg font-semibold active:bg-gray-300">Voltar</button>
+              <button onClick={validarEtapa2} className="flex-1 bg-[#057321] text-white py-3 rounded-lg font-semibold active:bg-[#046119]">Continuar</button>
             </div>
           </div>
         )}
@@ -295,12 +308,12 @@ export default function CadastroMoradorPage() {
         {/* Etapa 3 */}
         {etapa === 3 && (
           <div className="space-y-4">
-            <input type="password" value={senha} onChange={e => setSenha(e.target.value)} placeholder="Senha (min 6)" className="w-full px-4 py-3 border rounded-lg" />
-            <input type="password" value={confirmarSenha} onChange={e => setConfirmarSenha(e.target.value)} placeholder="Confirmar Senha" className="w-full px-4 py-3 border rounded-lg" />
+            <input type="password" value={senha} onChange={e => setSenha(e.target.value)} placeholder="Senha (min 6)" className="w-full px-4 py-3 border rounded-lg text-base" />
+            <input type="password" value={confirmarSenha} onChange={e => setConfirmarSenha(e.target.value)} placeholder="Confirmar Senha" className="w-full px-4 py-3 border rounded-lg text-base" />
             
             <div className="flex gap-3">
-              <button onClick={() => setEtapa(2)} disabled={loading} className="flex-1 bg-gray-200 py-3 rounded-lg font-semibold">Voltar</button>
-              <button onClick={criarConta} disabled={loading} className="flex-1 bg-[#057321] text-white py-3 rounded-lg font-semibold disabled:opacity-50">
+              <button onClick={() => setEtapa(2)} disabled={loading} className="flex-1 bg-gray-200 py-3 rounded-lg font-semibold active:bg-gray-300">Voltar</button>
+              <button onClick={criarConta} disabled={loading} className="flex-1 bg-[#057321] text-white py-3 rounded-lg font-semibold disabled:opacity-50 active:bg-[#046119]">
                 {loading ? "Criando..." : "Finalizar"}
               </button>
             </div>
@@ -309,7 +322,6 @@ export default function CadastroMoradorPage() {
 
         <div className="text-center pt-2">
           <button onClick={() => router.push("/")} className="text-sm text-[#057321] font-semibold hover:underline">
-            {/* ✅ CORREÇÃO: Volta para o Login (Raiz) */}
             Já tem conta? Faça login
           </button>
         </div>
@@ -318,5 +330,3 @@ export default function CadastroMoradorPage() {
     </div>
   );
 }
-
-

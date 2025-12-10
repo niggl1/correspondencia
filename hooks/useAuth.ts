@@ -1,119 +1,161 @@
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { onAuthStateChanged, signOut } from 'firebase/auth' // Importei signOut
-import { doc, getDoc } from 'firebase/firestore'
-import { auth, db } from '@/app/lib/firebase'
-import { MENSAGENS } from '@/constants/porteiro.constants'
+"use client"; // 👈 OBRIGATÓRIO NA PRIMEIRA LINHA
+
+import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
+import { auth, db } from "@/app/lib/firebase";
+// Certifique-se que o caminho da constante está correto ou remova se não usar
+import { MENSAGENS } from "@/constants/porteiro.constants";
 
 interface UserData {
-  uid: string
-  email: string
-  nome: string
-  telefone?: string
-  role: 'adminMaster' | 'responsavel' | 'porteiro' | 'morador' | 'admin'
-  condominioId: string
-  apartamento?: string
-  bloco?: string
-  ativo?: boolean
+  uid: string;
+  email: string;
+  nome: string;
+  telefone?: string;
+  role: "adminMaster" | "responsavel" | "porteiro" | "morador" | "admin";
+  condominioId: string;
+  apartamento?: string;
+  bloco?: string;
+  ativo?: boolean;
 }
 
 interface UseAuthReturn {
-  uid?: string
-  role?: 'adminMaster' | 'responsavel' | 'porteiro' | 'morador' | 'admin'
-  condominioId: string
-  user?: UserData
-  loading: boolean
-  error: string | null
-  logout: () => Promise<void> // ✅ Nova função disponível para quem usa o hook
+  uid?: string;
+  role?: "adminMaster" | "responsavel" | "porteiro" | "morador" | "admin";
+  condominioId: string;
+  user?: UserData;
+  loading: boolean;
+  error: string | null;
+  logout: () => Promise<void>;
 }
 
-const DEMO = process.env.NEXT_PUBLIC_DEMO === 'true'
+const DEMO = process.env.NEXT_PUBLIC_DEMO === "true";
+const CACHE_KEY = "app_user_cache"; // Chave para salvar no celular
 
 export const useAuth = (): UseAuthReturn => {
-  const router = useRouter()
-  const [uid, setUid] = useState<string|undefined>(undefined)
-  const [condominioId, setCondominioId] = useState<string>('')
-  const [role, setRole] = useState<'adminMaster'|'responsavel'|'porteiro'|'morador'|'admin'|undefined>(undefined)
-  const [user, setUser] = useState<UserData|undefined>(undefined)
-  const [loading, setLoading] = useState<boolean>(true)
-  const [error, setError] = useState<string|null>(null)
+  const router = useRouter();
+  
+  // Inicializa estados
+  const [uid, setUid] = useState<string | undefined>(undefined);
+  const [condominioId, setCondominioId] = useState<string>("");
+  const [role, setRole] = useState<UserData["role"] | undefined>(undefined);
+  const [user, setUser] = useState<UserData | undefined>(undefined);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // ✅ AQUI ESTÁ A SOLUÇÃO: Função centralizada de logout
-  const logout = async () => {
+  const clearAuthState = useCallback(() => {
+    setUid(undefined);
+    setRole(undefined);
+    setCondominioId("");
+    setUser(undefined);
+    // Limpa o cache local ao sair
+    if (typeof window !== "undefined") localStorage.removeItem(CACHE_KEY);
+  }, []);
+
+  const logout = useCallback(async () => {
     try {
-      await signOut(auth)
-      router.push('/') // Redireciona para a RAIZ (seu novo login)
-    } catch (error) {
-      console.error("Erro ao sair:", error)
+      await signOut(auth);
+      clearAuthState();
+      router.replace("/"); 
+    } catch (err) {
+      console.error("Erro ao sair:", err);
     }
-  }
+  }, [router, clearAuthState]);
 
   useEffect(() => {
+    // 1. MODO DEMO
     if (DEMO) {
       const demoUser: UserData = {
-        uid: 'demo-uid',
-        email: 'demo@exemplo.com',
-        nome: 'Usuário Demo',
-        telefone: '(11) 99999-9999',
-        role: 'responsavel',
-        condominioId: 'demo-condominio',
-      }
-      setUid('demo-uid')
-      setRole('responsavel')
-      setCondominioId('demo-condominio')
-      setUser(demoUser)
-      setLoading(false)
-      return
+        uid: "demo-uid",
+        email: "demo@exemplo.com",
+        nome: "Usuário Demo",
+        telefone: "(11) 99999-9999",
+        role: "responsavel",
+        condominioId: "demo-condominio",
+      };
+      setUid("demo-uid");
+      setRole("responsavel");
+      setCondominioId("demo-condominio");
+      setUser(demoUser);
+      setLoading(false);
+      return;
     }
 
-    const unsub = onAuthStateChanged(auth as any, async (firebaseUser) => {
+    // 2. OTIMIZAÇÃO MOBILE: Tenta carregar do cache instantaneamente
+    // Isso evita a tela branca de "Carregando..." ao abrir o app
+    const cached = localStorage.getItem(CACHE_KEY);
+    if (cached && loading) {
+        try {
+            const parsed = JSON.parse(cached);
+            setUid(parsed.uid);
+            setUser(parsed);
+            setRole(parsed.role);
+            setCondominioId(parsed.condominioId);
+            // Não setamos loading=false aqui para permitir que o Firebase valide se a conta ainda existe
+        } catch (e) { console.error("Cache inválido"); }
+    }
+
+    // 3. LISTENER DO FIREBASE
+    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       try {
         if (!firebaseUser) {
-          // Se não tem usuário, não faz nada ou manda pra raiz se for rota protegida
-          // (A proteção de rota é feita pelo componente withAuth geralmente)
-          setLoading(false)
-          return
+          clearAuthState();
+          setLoading(false);
+          return;
         }
-        
-        setUid(firebaseUser.uid)
-        const ref = doc(db as any, 'users', firebaseUser.uid)
-        const snap = await getDoc(ref)
-        
+
+        setUid(firebaseUser.uid);
+
+        // Busca dados atualizados no Firestore
+        const ref = doc(db, "users", firebaseUser.uid);
+        const snap = await getDoc(ref);
+
         if (!snap.exists()) {
-          setError('Usuário sem perfil cadastrado.')
-          await signOut(auth) // Desloga se não tiver perfil
-          router.push('/') // Manda pra raiz
-          return
+          setError("Usuário sem perfil cadastrado.");
+          await signOut(auth);
+          clearAuthState();
+          setLoading(false);
+          return;
         }
-        
-        const data = snap.data() as any
-        setRole(data.role)
-        setCondominioId(data.condominioId || '')
-        
+
+        const data = snap.data() as any;
+
         const userData: UserData = {
           uid: firebaseUser.uid,
-          email: firebaseUser.email || data.email || '',
-          nome: data.nome || '',
-          telefone: data.telefone || '',
+          email: firebaseUser.email || data.email || "",
+          nome: data.nome || "",
+          telefone: data.telefone || "",
           role: data.role,
-          condominioId: data.condominioId || '',
+          condominioId: data.condominioId || "",
           apartamento: data.apartamento,
           bloco: data.bloco,
           ativo: data.ativo !== false,
-        }
-        setUser(userData)
+        };
+
+        // Atualiza estados
+        setRole(data.role);
+        setCondominioId(data.condominioId || "");
+        setUser(userData);
         
+        // Salva no cache para a próxima vez
+        localStorage.setItem(CACHE_KEY, JSON.stringify(userData));
+        
+        setError(null);
       } catch (err) {
-        console.error('Erro ao verificar autenticação:', err)
-        setError(MENSAGENS?.ERRO?.AUTENTICACAO || 'Erro de autenticação.')
-        router.push('/') // Manda pra raiz em caso de erro
+        console.error("Erro ao verificar autenticação:", err);
+        setError(MENSAGENS?.ERRO?.AUTENTICACAO || "Erro de autenticação.");
+        // Se der erro de rede (offline), mantemos o usuário logado com o cache
+        if (!user) { 
+            clearAuthState(); 
+        }
       } finally {
-        setLoading(false)
+        setLoading(false);
       }
-    })
+    });
 
-    return () => unsub()
-  }, [router])
+    return () => unsub();
+  }, [router, clearAuthState]); // Removi 'loading' e 'user' das dependências para evitar loops
 
-  return { uid, role, condominioId, user, loading, error, logout }
-}
+  return { uid, role, condominioId, user, loading, error, logout };
+};

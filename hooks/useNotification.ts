@@ -1,47 +1,75 @@
-// hooks/useNotification.ts
+"use client";
 
-import { useState, useCallback } from 'react'
-import { TIMEOUT } from '@/constants/porteiro.constants'
+import { useState, useCallback } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { Toast } from '@capacitor/toast';
+import { TIMEOUT } from '@/constants/porteiro.constants';
 
-type NotificationType = 'success' | 'error' | null
+type NotificationType = 'success' | 'error' | null;
 
 interface Notification {
-  type: NotificationType
-  message: string
+  type: NotificationType;
+  message: string;
 }
 
 interface UseNotificationReturn {
-  notification: Notification | null
-  showSuccess: (message: string) => void
-  showError: (message: string) => void
-  clearNotification: () => void
+  notification: Notification | null;
+  showSuccess: (message: string) => void;
+  showError: (message: string) => void;
+  clearNotification: () => void;
 }
 
+// Fallback de segurança para os tempos
+const DURATION_SUCCESS = TIMEOUT?.MENSAGEM_SUCESSO || 3000;
+const DURATION_ERROR = TIMEOUT?.MENSAGEM_ERRO || 4000;
+
 export const useNotification = (): UseNotificationReturn => {
-  const [notification, setNotification] = useState<Notification | null>(null)
+  const [notification, setNotification] = useState<Notification | null>(null);
 
   const clearNotification = useCallback(() => {
-    setNotification(null)
-  }, [])
+    setNotification(null);
+  }, []);
 
-  const showSuccess = useCallback((message: string) => {
-    setNotification({ type: 'success', message })
-    setTimeout(() => {
-      setNotification(null)
-    }, TIMEOUT.MENSAGEM_SUCESSO)
-  }, [])
+  const showSuccess = useCallback(async (message: string) => {
+    // 📱 SE FOR APP NATIVO (Android/iOS)
+    if (Capacitor.isNativePlatform()) {
+      await Toast.show({
+        text: message,
+        duration: 'short',
+        position: 'bottom',
+      });
+    } 
+    // 💻 SE FOR WEB (Navegador/Vercel)
+    else {
+      setNotification({ type: 'success', message });
+      setTimeout(() => {
+        setNotification(null);
+      }, DURATION_SUCCESS);
+    }
+  }, []);
 
-  const showError = useCallback((message: string) => {
-    setNotification({ type: 'error', message })
-    setTimeout(() => {
-      setNotification(null)
-    }, TIMEOUT.MENSAGEM_ERRO)
-  }, [])
+  const showError = useCallback(async (message: string) => {
+    // 📱 SE FOR APP NATIVO
+    if (Capacitor.isNativePlatform()) {
+      await Toast.show({
+        text: message,
+        duration: 'long', // Erro fica mais tempo
+        position: 'bottom',
+      });
+    } 
+    // 💻 SE FOR WEB
+    else {
+      setNotification({ type: 'error', message });
+      setTimeout(() => {
+        setNotification(null);
+      }, DURATION_ERROR);
+    }
+  }, []);
 
   return {
     notification,
     showSuccess,
     showError,
     clearNotification,
-  }
-}
+  };
+};

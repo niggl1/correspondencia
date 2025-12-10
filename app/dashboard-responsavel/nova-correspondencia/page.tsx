@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import UploadImagem from "@/components/UploadImagem";
 import SelectCondominioBlocoMorador from "@/components/SelectCondominioBlocoMorador";
-import { LoadingOverlay } from "@/components/LoadingOverlay"; 
+import { LoadingOverlay } from "@/components/LoadingOverlay";
 import ModalSucessoEntrada from "@/components/ModalSucessoEntrada";
 import { useAuth } from "@/hooks/useAuth";
 import { db, storage } from "@/app/lib/firebase";
@@ -12,13 +12,22 @@ import { doc, getDoc, collection, setDoc, Timestamp } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import Navbar from "@/components/Navbar";
 import withAuth from "@/components/withAuth";
-import { Package, FileText, CheckCircle, Loader2, Building2, Camera, MapPin, MessageCircle } from "lucide-react"; 
-import { gerarEtiquetaPDF } from "@/utils/gerarEtiquetaPDF"; 
+import {
+  Package,
+  FileText,
+  CheckCircle,
+  Loader2,
+  Building2,
+  Camera,
+  MapPin,
+} from "lucide-react";
+import { gerarEtiquetaPDF } from "@/utils/gerarEtiquetaPDF";
 import BotaoVoltar from "@/components/BotaoVoltar";
-import { useTemplates } from "@/hooks/useTemplates"; 
-import MessageConfigModal from "@/components/MessageConfigModal"; 
+import { useTemplates } from "@/hooks/useTemplates";
+import { formatPtBrDateTime, buildFinalWhatsappMessage } from "@/utils/messageFormat";
+import MessageTemplateButton from "@/components/MessageTemplateButton";
 
-// --- FUNÇÃO DE COMPRESSÃO ---
+// --- FUNÇÃO DE COMPRESSÃO OTIMIZADA ---
 const compressImage = async (file: File): Promise<File> => {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -28,7 +37,7 @@ const compressImage = async (file: File): Promise<File> => {
       img.src = event.target?.result as string;
       img.onload = () => {
         const canvas = document.createElement("canvas");
-        const MAX_WIDTH = 500; 
+        const MAX_WIDTH = 500; // Mantido 500px para performance mobile extrema
         let width = img.width;
         let height = img.height;
 
@@ -41,22 +50,30 @@ const compressImage = async (file: File): Promise<File> => {
         canvas.height = height;
         const ctx = canvas.getContext("2d");
         if (ctx) {
-            ctx.fillStyle = "#FFFFFF";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.drawImage(img, 0, 0, width, height);
+          ctx.fillStyle = "#FFFFFF";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, width, height);
         }
-        
-        canvas.toBlob((blob) => {
-          if (blob) {
-            const newFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", {
-              type: "image/jpeg",
-              lastModified: Date.now(),
-            });
-            resolve(newFile);
-          } else {
-            resolve(file);
-          }
-        }, "image/jpeg", 0.6);
+
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              const newFile = new File(
+                [blob],
+                file.name.replace(/\.[^/.]+$/, "") + ".jpg",
+                {
+                  type: "image/jpeg",
+                  lastModified: Date.now(),
+                }
+              );
+              resolve(newFile);
+            } else {
+              resolve(file);
+            }
+          },
+          "image/jpeg",
+          0.6 // Qualidade 60%
+        );
       };
       img.onerror = () => resolve(file);
     };
@@ -65,36 +82,35 @@ const compressImage = async (file: File): Promise<File> => {
 };
 
 const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = (error) => reject(error);
-    });
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = (error) => reject(error);
+  });
 };
 
 function NovaCorrespondenciaResponsavelPage() {
   const router = useRouter();
   const { role, condominioId, user } = useAuth() as any;
-  
+
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState("Processando...");
-  
+
+  const backRoute = "/dashboard-responsavel";
+  const efetivoCondominioId = condominioId || "";
+
   // --- Configuração de Mensagens ---
-  const { getFormattedMessage } = useTemplates(condominioId || "");
-  const [showConfigModal, setShowConfigModal] = useState(false);
-  // --------------------------------
+  const { getFormattedMessage } = useTemplates(efetivoCondominioId);
 
   // Estados do formulário
   const [selectedCondominio, setSelectedCondominio] = useState("");
   const [selectedBloco, setSelectedBloco] = useState("");
   const [selectedMorador, setSelectedMorador] = useState("");
   const [observacao, setObservacao] = useState("");
-  
-  // ATUALIZADO: Valor padrão e opções corrigidas
-  const [localArmazenamento, setLocalArmazenamento] = useState("Portaria"); 
-  
+
+  const [localArmazenamento, setLocalArmazenamento] = useState("Portaria");
   const [imagemFile, setImagemFile] = useState<File | null>(null);
 
   // Estados de sucesso/modal
@@ -103,13 +119,9 @@ function NovaCorrespondenciaResponsavelPage() {
   const [moradorNome, setMoradorNome] = useState("");
   const [telefoneMorador, setTelefoneMorador] = useState("");
   const [emailMorador, setEmailMorador] = useState("");
-  const [pdfUrl, setPdfUrl] = useState("");        
-  const [linkPublico, setLinkPublico] = useState(""); 
-  
+  const [pdfUrl, setPdfUrl] = useState("");
+  const [linkPublico, setLinkPublico] = useState("");
   const [mensagemFormatada, setMensagemFormatada] = useState("");
-  
-  const backRoute = '/dashboard-responsavel';
-  const efetivoCondominioId = condominioId || "";
 
   const handleUpload = (file: File | null) => setImagemFile(file);
   const limparTelefone = (telefone: string) => telefone.replace(/\D/g, "");
@@ -138,27 +150,35 @@ function NovaCorrespondenciaResponsavelPage() {
   }, [selectedMorador]);
 
   const buscarNomes = async () => {
-    let condominioNome = "", blocoNome = "", nomeMorador = "", apartamento = "";
-    
+    let condominioNome = "",
+      blocoNome = "",
+      nomeMorador = "",
+      apartamento = "";
+
     try {
-        if (efetivoCondominioId) {
-           const cSnap = await getDoc(doc(db, "condominios", efetivoCondominioId));
-           condominioNome = cSnap.data()?.nome || efetivoCondominioId;
+      if (efetivoCondominioId) {
+        const cSnap = await getDoc(doc(db, "condominios", efetivoCondominioId));
+        condominioNome = cSnap.data()?.nome || efetivoCondominioId;
+      }
+      if (selectedBloco) {
+        const bSnap = await getDoc(doc(db, "blocos", selectedBloco));
+        blocoNome = bSnap.data()?.nome || selectedBloco;
+      }
+      if (selectedMorador) {
+        const mSnap = await getDoc(doc(db, "users", selectedMorador));
+        if (mSnap.exists()) {
+          const data = mSnap.data();
+          nomeMorador = data.nome || selectedMorador;
+          apartamento =
+            data.apartamento ||
+            data.unidade ||
+            data.unidadeNome ||
+            data.numero ||
+            "";
         }
-        if (selectedBloco) {
-           const bSnap = await getDoc(doc(db, "blocos", selectedBloco));
-           blocoNome = bSnap.data()?.nome || selectedBloco;
-        }
-        if (selectedMorador) {
-           const mSnap = await getDoc(doc(db, "users", selectedMorador));
-           if (mSnap.exists()) {
-               const data = mSnap.data();
-               nomeMorador = data.nome || selectedMorador;
-               apartamento = data.apartamento || data.unidade || data.unidadeNome || data.numero || "";
-           }
-        }
+      }
     } catch (err) {
-        console.error("Erro ao buscar nomes:", err);
+      console.error("Erro ao buscar nomes:", err);
     }
     return { condominioNome, blocoNome, moradorNome: nomeMorador, apartamento };
   };
@@ -172,103 +192,113 @@ function NovaCorrespondenciaResponsavelPage() {
     setLoading(true);
     setMessage("Iniciando registro...");
     setProgress(10);
-    setLinkPublico(""); 
+    setLinkPublico("");
 
     try {
-      const nomes = await buscarNomes();
-      const novoProtocolo = `${Math.floor(Date.now() / 1000).toString().slice(-6)}`;
+      // 1. Prepara dados iniciais em paralelo (nomes e compressão)
+      const nomesPromise = buscarNomes();
+      let imagemProcessPromise: Promise<File | null> = Promise.resolve(null);
       
+      if (imagemFile) {
+         setMessage("Processando foto...");
+         imagemProcessPromise = compressImage(imagemFile);
+      }
+
+      const [nomes, arquivoFinal] = await Promise.all([nomesPromise, imagemProcessPromise]);
+
+      const novoProtocolo = `${Math.floor(Date.now() / 1000).toString().slice(-6)}`;
       const docRef = doc(collection(db, "correspondencias"));
-      const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+      const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
       const novoLinkPublico = `${baseUrl}/ver/${docRef.id}`;
       setLinkPublico(novoLinkPublico);
 
-      let arquivoFinal = imagemFile;
+      // 2. Prepara Base64 para PDF
       let fotoBase64ParaPDF = "";
-
-      if (imagemFile) {
-         setMessage("Processando foto...");
-         try {
-             arquivoFinal = await compressImage(imagemFile);
-             setProgress(30);
-             fotoBase64ParaPDF = await fileToBase64(arquivoFinal);
-         } catch (e) {
-             console.error("Erro na compressão, usando original:", e);
-             fotoBase64ParaPDF = await fileToBase64(imagemFile);
-         }
+      if (arquivoFinal) {
+        try {
+            fotoBase64ParaPDF = await fileToBase64(arquivoFinal);
+        } catch (e) {
+            console.error("Erro conversão base64", e);
+        }
       }
 
       const nomeUser = user?.nome || "Responsável";
       const responsavelRegistro = `${nomeUser} (Gestão)`;
 
       setMessage("Gerando etiqueta...");
-      
-      // --- GERAÇÃO DO PDF COM O NOVO CAMPO ---
+      setProgress(40);
+
+      // 3. Gera PDF
       const pdfBlob = await gerarEtiquetaPDF({
-          protocolo: novoProtocolo,
-          condominioNome: nomes.condominioNome,
-          moradorNome: nomes.moradorNome,
-          bloco: nomes.blocoNome,
-          apartamento: nomes.apartamento, 
-          dataChegada: new Date().toISOString(),
-          recebidoPor: responsavelRegistro,
-          observacao: observacao, // Observação limpa
-          localRetirada: localArmazenamento, // Passando o local separado
-          fotoUrl: fotoBase64ParaPDF,
-          logoUrl: "/logo-app-correspondencia.png"
+        protocolo: novoProtocolo,
+        condominioNome: nomes.condominioNome,
+        moradorNome: nomes.moradorNome,
+        bloco: nomes.blocoNome,
+        apartamento: nomes.apartamento,
+        dataChegada: new Date().toISOString(),
+        recebidoPor: responsavelRegistro,
+        observacao: observacao,
+        localRetirada: localArmazenamento,
+        fotoUrl: fotoBase64ParaPDF,
+        logoUrl: "/logo-app-correspondencia.png",
       });
-      
+
       const localPdfUrl = URL.createObjectURL(pdfBlob);
       setPdfUrl(localPdfUrl);
       setProtocolo(novoProtocolo);
+      
+      setMessage("Salvando arquivos...");
       setProgress(60);
 
-      setMessage("Salvando no sistema...");
+      // 4. UPLOADS PARALELOS (MÁXIMA VELOCIDADE)
+      const uploadsPromises: Promise<any>[] = [];
       
-      let publicPdfUrl = "";
-      let publicFotoUrl = "";
-
-      // 1. Upload PDF
+      // Upload PDF
       const pdfRef = ref(storage, `correspondencias/entrada_${novoProtocolo}_${Date.now()}.pdf`);
-      await uploadBytes(pdfRef, pdfBlob);
-      publicPdfUrl = await getDownloadURL(pdfRef);
+      uploadsPromises.push(uploadBytes(pdfRef, pdfBlob));
 
-      // 2. Upload Foto (Se houver)
+      // Upload Foto (se existir)
+      let fotoRef: any = null;
       if (arquivoFinal) {
-          const fotoRef = ref(storage, `correspondencias/foto_${novoProtocolo}_${Date.now()}.jpg`);
-          await uploadBytes(fotoRef, arquivoFinal);
-          publicFotoUrl = await getDownloadURL(fotoRef);
+        fotoRef = ref(storage, `correspondencias/foto_${novoProtocolo}_${Date.now()}.jpg`);
+        uploadsPromises.push(uploadBytes(fotoRef, arquivoFinal));
       }
 
-      // 3. Salvar no Banco
+      await Promise.all(uploadsPromises);
+
+      // 5. OBTER URLS PARALELAS
+      const urlsPromises: Promise<string>[] = [getDownloadURL(pdfRef)];
+      if (fotoRef) urlsPromises.push(getDownloadURL(fotoRef));
+
+      const [publicPdfUrl, publicFotoUrl] = await Promise.all(urlsPromises);
+
+      setMessage("Finalizando registro...");
+      setProgress(90);
+
+      // 6. Salvar no Banco
       await setDoc(docRef, {
-          condominioId: efetivoCondominioId,
-          blocoId: selectedBloco,
-          blocoNome: nomes.blocoNome,
-          moradorId: selectedMorador,
-          moradorNome: nomes.moradorNome,
-          apartamento: nomes.apartamento,
-          protocolo: novoProtocolo,
-          observacao,
-          localArmazenamento, // Salva no banco também
-          status: "pendente", 
-          criadoEm: Timestamp.now(),
-          criadoPor: user?.email || "responsavel",
-          criadoPorNome: nomeUser, 
-          criadoPorCargo: "Responsável",
-          imagemUrl: publicFotoUrl,
-          pdfUrl: publicPdfUrl,
-          moradorTelefone: telefoneMorador,
-          moradorEmail: emailMorador
+        condominioId: efetivoCondominioId,
+        blocoId: selectedBloco,
+        blocoNome: nomes.blocoNome,
+        moradorId: selectedMorador,
+        moradorNome: nomes.moradorNome,
+        apartamento: nomes.apartamento,
+        protocolo: novoProtocolo,
+        observacao,
+        localArmazenamento,
+        status: "pendente",
+        criadoEm: Timestamp.now(),
+        criadoPor: user?.email || "responsavel",
+        criadoPorNome: nomeUser,
+        criadoPorCargo: "Responsável",
+        imagemUrl: publicFotoUrl || "", // Garante string vazia se undefined
+        pdfUrl: publicPdfUrl,
+        moradorTelefone: telefoneMorador,
+        moradorEmail: emailMorador,
       });
 
-      console.log("✅ Correspondência salva com sucesso! ID:", docRef.id);
+      console.log("✅ Correspondência salva! ID:", docRef.id);
       setProgress(100);
-
-      // Mensagem Whatsapp
-      const dataAtual = new Date();
-      const dataFormatada = dataAtual.toLocaleDateString('pt-BR');
-      const horaFormatada = dataAtual.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
       const variaveis = {
         MORADOR: nomes.moradorNome,
@@ -277,16 +307,15 @@ function NovaCorrespondenciaResponsavelPage() {
         PROTOCOLO: novoProtocolo,
         LOCAL: localArmazenamento,
         RECEBIDO_POR: nomeUser,
-        DATA_HORA: `${dataFormatada}, ${horaFormatada}`,
-        CONDOMINIO: nomes.condominioNome || "Condomínio" 
+        DATA_HORA: formatPtBrDateTime(),
+        CONDOMINIO: nomes.condominioNome || "Condomínio",
       };
 
-      const msgBase = await getFormattedMessage('ARRIVAL', variaveis);
-      setMensagemFormatada(`${msgBase}\n${novoLinkPublico}`);
+      const msgBase = await getFormattedMessage("ARRIVAL", variaveis);
+      setMensagemFormatada(buildFinalWhatsappMessage(msgBase, novoLinkPublico));
 
       setLoading(false);
       setShowSuccessModal(true);
-
     } catch (err) {
       console.error(err);
       setLoading(false);
@@ -295,48 +324,51 @@ function NovaCorrespondenciaResponsavelPage() {
   };
 
   const handleCloseSuccess = () => {
-      setObservacao("");
-      setImagemFile(null);
-      setPdfUrl("");
-      setLinkPublico("");
-      setMensagemFormatada("");
-      setSelectedMorador(""); 
-      setShowSuccessModal(false);
+    setObservacao("");
+    setImagemFile(null);
+    setPdfUrl("");
+    setLinkPublico("");
+    setMensagemFormatada("");
+    setSelectedMorador("");
+    setShowSuccessModal(false);
   };
 
+  // ✅ CORREÇÃO PARA CAPACITOR: Abre PDF no app nativo se disponível
   const handleImprimir = () => {
-      if (pdfUrl) window.open(pdfUrl, "_blank");
+    if (pdfUrl) {
+        const target = typeof window !== 'undefined' && (window as any).Capacitor ? "_system" : "_blank";
+        window.open(pdfUrl, target);
+    }
   };
 
   const handleReenviarEmail = async () => {
-      alert("O e-mail já está sendo enviado automaticamente pelo sistema.");
+    alert("O e-mail já está sendo enviado automaticamente pelo sistema.");
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-green-50/30">
       <Navbar />
-      
+
       <LoadingOverlay isVisible={loading} progress={progress} message={message} />
 
       {showSuccessModal && (
-          <ModalSucessoEntrada 
-              protocolo={protocolo}
-              moradorNome={moradorNome}
-              telefoneMorador={telefoneMorador}
-              emailMorador={emailMorador}
-              pdfUrl={pdfUrl}
-              linkPublico={linkPublico} 
-              mensagemFormatada={mensagemFormatada} 
-              onClose={handleCloseSuccess}
-              onImprimir={handleImprimir}
-              onReenviarEmail={handleReenviarEmail}
-          />
+        <ModalSucessoEntrada
+          protocolo={protocolo}
+          moradorNome={moradorNome}
+          telefoneMorador={telefoneMorador}
+          emailMorador={emailMorador}
+          pdfUrl={pdfUrl}
+          linkPublico={linkPublico}
+          mensagemFormatada={mensagemFormatada}
+          onClose={handleCloseSuccess}
+          onImprimir={handleImprimir}
+          onReenviarEmail={handleReenviarEmail}
+        />
       )}
-      
+
       <main className="max-w-4xl mx-auto px-4 pt-24 pb-12">
-        
         <BotaoVoltar url={backRoute} />
-        
+
         <div className="mb-8 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg bg-gradient-to-br from-[#057321] to-[#046119]">
@@ -347,35 +379,30 @@ function NovaCorrespondenciaResponsavelPage() {
               <p className="text-gray-600">Gestão de Entrada</p>
             </div>
           </div>
-          
-          <button 
-            onClick={() => setShowConfigModal(true)}
-            className="px-4 py-2.5 bg-[#057321] text-white text-sm font-bold rounded-xl shadow-md hover:bg-[#046119] transition-all flex items-center gap-2 uppercase tracking-wide"
-            title="Configurar Mensagem Automática"
-          >
-            <MessageCircle size={20} />
-            Mensagem Whatsapp
-          </button>
+
+          <MessageTemplateButton
+            condoId={efetivoCondominioId}
+            category="ARRIVAL"
+            label="Mensagem Whatsapp"
+          />
         </div>
 
         <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
           <div className="h-1.5 bg-gradient-to-r from-[#057321] to-[#0a9f2f]"></div>
           <div className="p-6 space-y-6">
-            
             <div className="bg-gray-50 p-5 rounded-xl border border-gray-200 shadow-sm">
               <label className="flex items-center gap-2 text-base font-bold text-gray-800 mb-3">
                 <Package size={20} className="text-[#057321]" /> Destinatário
               </label>
-              <SelectCondominioBlocoMorador 
-                  onSelect={({ condominioId, blocoId, moradorId }) => { 
-                      setSelectedCondominio(condominioId); 
-                      setSelectedBloco(blocoId); 
-                      setSelectedMorador(moradorId); 
-                  }} 
+              <SelectCondominioBlocoMorador
+                onSelect={({ condominioId, blocoId, moradorId }) => {
+                  setSelectedCondominio(condominioId);
+                  setSelectedBloco(blocoId);
+                  setSelectedMorador(moradorId);
+                }}
               />
             </div>
 
-            {/* --- NOVA SEÇÃO DE LOCAL DE RETIRADA --- */}
             <div>
               <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
                 <MapPin size={18} className="text-[#057321]" /> Local de Retirada
@@ -397,12 +424,12 @@ function NovaCorrespondenciaResponsavelPage() {
               <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
                 <FileText size={18} className="text-[#057321]" /> Detalhes / Observação
               </label>
-              <textarea 
-                value={observacao} 
-                onChange={(e) => setObservacao(e.target.value)} 
-                placeholder="Ex: Caixa grande Amazon, Envelope bancário..." 
-                className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 focus:border-[#057321] focus:ring-4 focus:ring-[#057321]/10 outline-none transition-all placeholder:text-gray-400" 
-                rows={3} 
+              <textarea
+                value={observacao}
+                onChange={(e) => setObservacao(e.target.value)}
+                placeholder="Ex: Caixa grande Amazon, Envelope bancário..."
+                className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 focus:border-[#057321] focus:ring-4 focus:ring-[#057321]/10 outline-none transition-all placeholder:text-gray-400"
+                rows={3}
               />
             </div>
 
@@ -416,29 +443,25 @@ function NovaCorrespondenciaResponsavelPage() {
             </div>
 
             <div className="pt-2">
-              <button 
-                onClick={salvar} 
-                disabled={loading} 
+              <button
+                onClick={salvar}
+                disabled={loading}
                 className="w-full py-4 text-white rounded-xl font-bold text-lg shadow-lg disabled:opacity-50 flex items-center justify-center gap-3 transition-all hover:shadow-xl hover:scale-[1.01] active:scale-[0.99] bg-gradient-to-r from-[#057321] to-[#046119]"
+                type="button"
               >
-                {loading ? <Loader2 className="animate-spin" size={24} /> : <CheckCircle size={24} />} 
+                {loading ? (
+                  <Loader2 className="animate-spin" size={24} />
+                ) : (
+                  <CheckCircle size={24} />
+                )}
                 {loading ? "Registrando..." : "Registrar Entrada"}
               </button>
             </div>
-
           </div>
         </div>
-
-        <MessageConfigModal
-          isOpen={showConfigModal}
-          onClose={() => setShowConfigModal(false)}
-          condoId={efetivoCondominioId}
-          category="ARRIVAL"
-        />
-
       </main>
     </div>
   );
 }
 
-export default withAuth(NovaCorrespondenciaResponsavelPage, ['responsavel', 'adminMaster']);
+export default withAuth(NovaCorrespondenciaResponsavelPage, ["responsavel", "adminMaster"]);

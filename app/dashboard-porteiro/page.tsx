@@ -1,13 +1,20 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import withAuth from "@/components/withAuth";
-import { Package, Send, ClipboardCheck, Zap, HelpCircle } from "lucide-react"; // Importei HelpCircle
+import { Package, Send, ClipboardCheck, Zap, HelpCircle } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import TutorialGuide from "@/components/TutorialGuide";
 
 function PorteiroPage() {
   const router = useRouter();
+  const [isMounted, setIsMounted] = useState(false);
+
+  // Garante que o componente só renderize no cliente (Correção Vercel/Hydration)
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   // Função para reiniciar o tutorial
   const reiniciarTutorial = () => {
@@ -17,14 +24,21 @@ function PorteiroPage() {
     window.location.reload();
   };
 
+  // Previne renderização no servidor para evitar mismatch de hidratação
+  if (!isMounted) {
+    return null;
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 relative">
       
-      {/* 1. Navbar Fixa */}
-      <Navbar />
+      {/* 1. Navbar Fixa - Z-index alto para mobile */}
+      <div className="relative z-50">
+        <Navbar />
+      </div>
 
-      {/* 2. Espaçamento Ajustado */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-12">
+      {/* 2. Espaçamento Ajustado para Mobile (Safe Area) */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-12">
         
         {/* ID: intro-painel */}
         <div id="intro-painel" className="mb-8">

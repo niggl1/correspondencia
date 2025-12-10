@@ -25,6 +25,7 @@ import {
   UserCog,
   Users,
   HelpCircle,
+  Share2
 } from "lucide-react";
 
 import TutorialGuide from "@/components/TutorialGuide";
@@ -50,6 +51,7 @@ function DashboardResponsavel() {
   const [showInfo, setShowInfo] = useState(true);
 
   useEffect(() => {
+    setIsMounted(true);
     const savedLayout = localStorage.getItem("layout_pref_responsavel");
     if (savedLayout === "original" || savedLayout === "colunas" || savedLayout === "linha") {
       setLayoutMode(savedLayout);
@@ -60,8 +62,12 @@ function DashboardResponsavel() {
         setLayoutMode("original");
       }
     }
-    setIsMounted(true);
-    if (user?.condominioId) carregarEstatisticas();
+  }, []);
+
+  useEffect(() => {
+    if (user?.condominioId) {
+        carregarEstatisticas();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
@@ -82,42 +88,67 @@ function DashboardResponsavel() {
   const carregarEstatisticas = async () => {
     if (!user?.condominioId) return;
     try {
+      // 1. Contagem de Blocos
       const blocosSnap = await getCountFromServer(
         query(collection(db, "blocos"), where("condominioId", "==", user.condominioId))
       );
-      const moradoresSnap = await getCountFromServer(
-        query(
+
+      // 2. Contagem TOTAL de Moradores (Todos que existem)
+      const qTotalMoradores = query(
           collection(db, "users"),
           where("condominioId", "==", user.condominioId),
           where("role", "==", "morador")
-        )
       );
-      const pendentesSnap = await getCountFromServer(
-        query(
+      const snapTotalMoradores = await getCountFromServer(qTotalMoradores);
+      const totalGeral = snapTotalMoradores.data().count;
+
+      // 3. Contagem de Moradores APROVADOS (Ativos)
+      const qAprovados = query(
           collection(db, "users"),
           where("condominioId", "==", user.condominioId),
           where("role", "==", "morador"),
-          where("aprovado", "==", false)
-        )
+          where("aprovado", "==", true)
       );
+      const snapAprovados = await getCountFromServer(qAprovados);
+      const totalAprovados = snapAprovados.data().count;
+
+      // 4. Cálculo: Pendentes = Total Geral - Aprovados
+      // Isso garante que null, undefined ou false caiam aqui
+      const totalPendentes = totalGeral - totalAprovados;
+
       setStats({
         blocos: blocosSnap.data().count,
         unidades: 0,
-        moradores: moradoresSnap.data().count,
-        pendentes: pendentesSnap.data().count,
+        moradores: totalAprovados, // Mostra quantos estão ativos
+        pendentes: totalPendentes, // Mostra o restante
       });
+
     } catch (error) {
-      console.error(error);
+      console.error("Erro ao carregar estatísticas:", error);
     }
   };
 
-  const copiarLinkCadastro = () => {
+  const compartilharOuCopiarLink = async () => {
     const baseUrl = window.location.origin;
     const link = `${baseUrl}/cadastro-morador`;
+
+    if (navigator.share) {
+        try {
+            await navigator.share({
+                title: 'Cadastro de Morador',
+                text: `Olá! Utilize este link para se cadastrar no sistema do condomínio ${user?.nome || ''}:`,
+                url: link,
+            });
+            return;
+        } catch (err) {
+            console.log('Compartilhamento cancelado ou erro, tentando copiar...');
+        }
+    }
+
     navigator.clipboard
       .writeText(link)
       .then(() => {
-        alert("Link de cadastro copiado! Envie para os moradores.");
+        alert("Link de cadastro copiado para a área de transferência!");
       })
       .catch(() => {
         alert("Erro ao copiar link. Tente manualmente: " + link);
@@ -129,7 +160,6 @@ function DashboardResponsavel() {
     return r[role] || role;
   };
 
-  // --- COMPONENTE DE GESTÃO (Reutilizável) ---
   const MenuGestaoContent = () => (
     <>
       <div
@@ -187,13 +217,20 @@ function DashboardResponsavel() {
 
           <div
             id="btn-gestao-aprovacoes"
-            onClick={() => router.push("/dashboard-responsavel/aprovacoes")}
-            className="group flex flex-col items-center justify-center gap-2 p-3 bg-white border border-gray-200 rounded-xl hover:bg-[#057321] cursor-pointer transition-all shadow-sm"
+            onClick={() => router.push("/dashboard-responsavel/aprovar-moradores")}
+            className="group flex flex-col items-center justify-center gap-2 p-3 bg-white border border-gray-200 rounded-xl hover:bg-[#057321] cursor-pointer transition-all shadow-sm relative"
           >
             <CheckSquare size={22} className="text-[#057321] group-hover:text-white transition-colors" />
             <span className="font-bold text-gray-700 text-[11px] group-hover:text-white transition-colors">
               Aprovar
             </span>
+            
+            {stats.pendentes > 0 && (
+                <span className="absolute top-2 right-2 flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                </span>
+            )}
           </div>
 
           <div
@@ -209,12 +246,12 @@ function DashboardResponsavel() {
 
           <div
             id="btn-gestao-link"
-            onClick={copiarLinkCadastro}
+            onClick={compartilharOuCopiarLink}
             className="group flex flex-col items-center justify-center gap-2 p-3 bg-white border border-gray-200 rounded-xl hover:bg-[#057321] cursor-pointer transition-all shadow-sm"
           >
-            <LinkIcon size={22} className="text-[#057321] group-hover:text-white transition-colors" />
+            <Share2 size={22} className="text-[#057321] group-hover:text-white transition-colors" />
             <span className="font-bold text-gray-700 text-[11px] group-hover:text-white transition-colors">
-              Copiar Link
+              Link Cadastro
             </span>
           </div>
 
@@ -243,7 +280,6 @@ function DashboardResponsavel() {
 
   if (!isMounted) return null;
 
-  // ✅ WEB: título e subtítulo maiores; subtítulo branco
   const ActionCard = ({
     id,
     onClick,
@@ -300,7 +336,6 @@ function DashboardResponsavel() {
     </button>
   );
 
-  // ✅ COLUNA: ícone na frente do texto, maior; ordem: Novo Aviso, Avisos Rápidos, Registrar Retirada, Avisos Enviados
   const ColunaButton = ({
     id,
     onClick,
@@ -341,8 +376,7 @@ function DashboardResponsavel() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-green-50/30 relative">
-      {/* HEADER */}
-      <header className="bg-gradient-to-r from-[#057321] to-[#046119] shadow-md sticky top-0 z-10">
+      <header className="bg-gradient-to-r from-[#057321] to-[#046119] shadow-md sticky top-0 z-[100]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -387,7 +421,6 @@ function DashboardResponsavel() {
         </div>
       </header>
 
-      {/* CONTEÚDO PRINCIPAL */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-12">
         <div className="flex flex-col xl:flex-row items-center justify-between gap-4 mb-6 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
           <div id="tour-boas-vindas" className="text-center sm:text-left w-full xl:w-auto">
@@ -411,13 +444,20 @@ function DashboardResponsavel() {
               </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-1 sm:gap-2 px-1 sm:px-3 py-2 rounded-md bg-white text-[#057321] shadow-sm cursor-default">
+            <button 
+               onClick={() => router.push('/dashboard-responsavel/aprovar-moradores')}
+               className={`flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-1 sm:gap-2 px-1 sm:px-3 py-2 rounded-md shadow-sm transition-all duration-300 ${
+                  stats.pendentes > 0 
+                  ? "bg-red-100 text-red-700 border border-red-200 animate-pulse cursor-pointer hover:bg-red-200" 
+                  : "bg-white text-[#057321] cursor-default"
+               }`}
+            >
               <CheckSquare className="w-4 h-4 sm:w-[18px] sm:h-[18px]" />
               <div className="text-[10px] sm:text-sm font-medium leading-tight text-center sm:text-left">
                 <span className="block sm:inline">Pendentes: </span>
                 <strong className="text-xs sm:text-sm">{stats.pendentes}</strong>
               </div>
-            </div>
+            </button>
           </div>
 
           <div
@@ -487,7 +527,6 @@ function DashboardResponsavel() {
           </div>
         )}
 
-        {/* WEB (Original) - textos ajustados */}
         {layoutMode === "original" && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-8 w-full">
             <ActionCard
@@ -521,7 +560,6 @@ function DashboardResponsavel() {
           </div>
         )}
 
-        {/* COLUNAS - ícone maior + ícone na frente do texto + ordem ajustada */}
         {layoutMode === "colunas" && (
           <div className="w-full mb-8">
             <div className="bg-green-50 rounded-xl border-2 border-[#057321] overflow-hidden flex flex-col shadow-sm w-full">
@@ -534,7 +572,6 @@ function DashboardResponsavel() {
                   <MenuGestaoContent />
                 </div>
 
-                {/* ✅ ORDEM: Novo Aviso, Avisos Rápidos, Registrar Retirada, Avisos Enviados */}
                 <ColunaButton
                   id="btn-novo-aviso"
                   onClick={() => router.push("/dashboard-responsavel/nova-correspondencia")}
@@ -567,7 +604,6 @@ function DashboardResponsavel() {
           </div>
         )}
 
-        {/* CELULAR (Linha) - ícone e texto maiores, proporcional */}
         {layoutMode === "linha" && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8 w-full">
             <button
