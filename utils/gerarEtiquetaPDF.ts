@@ -77,7 +77,8 @@ export async function gerarEtiquetaPDF(dados: DadosEtiqueta): Promise<Blob> {
   // ==========================================
   // 1. CABEÇALHO
   // ==========================================
-  doc.setFillColor(verdeOficial);
+  
+    doc.setFillColor(verdeOficial);
   doc.rect(0, 0, pageWidth, 35, "F"); 
 
   if (logoBase64) {
@@ -86,10 +87,28 @@ export async function gerarEtiquetaPDF(dados: DadosEtiqueta): Promise<Blob> {
     } catch (e) {}
   }
 
+  // === CORREÇÃO DO NOME DO CONDOMÍNIO ===
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(16);
+  
+  // Pega o nome completo (sem cortar com substring)
+  const nomeCondominio = safeText(dados.condominioNome);
+
+  // Lógica inteligente de tamanho da fonte
+  let tamanhoFonte = 16; // Tamanho padrão
+  if (nomeCondominio.length > 40) {
+    tamanhoFonte = 10; // Muito longo
+  } else if (nomeCondominio.length > 30) {
+    tamanhoFonte = 12; // Longo
+  } else if (nomeCondominio.length > 24) {
+    tamanhoFonte = 14; // Médio
+  }
+
+  doc.setFontSize(tamanhoFonte);
   doc.setFont("helvetica", "bold");
-  doc.text(safeText(dados.condominioNome).substring(0, 25), margin + 35, 12);
+  
+  // Desenha o nome completo
+  doc.text(nomeCondominio, margin + 35, 12);
+  // ======================================
 
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
@@ -132,7 +151,7 @@ export async function gerarEtiquetaPDF(dados: DadosEtiqueta): Promise<Blob> {
     
     return y + 12; 
   };
-
+  
   // ==========================================
   // 3. DESTINATÁRIO
   // ==========================================
