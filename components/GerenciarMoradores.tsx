@@ -1,40 +1,35 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   Edit2,
   Trash2,
-  UserCheck,
-  UserX,
   Upload,
   FileText,
   FileSpreadsheet,
   Plus,
   Search,
   XCircle,
+  Loader2,
+  Clock
 } from "lucide-react";
-import { db, auth } from "@/app/lib/firebase";
-import { createUserWithEmailAndPassword } from "firebase/auth";
-import {
-  collection,
-  getDocs,
-  updateDoc,
-  deleteDoc,
-  doc,
-  setDoc,
-  addDoc,
-  query,
-  where,
-  serverTimestamp,
-  getDoc,
+import { db, auth } from "@/app/lib/firebase"; 
+import { 
+  collection, getDocs, updateDoc, deleteDoc, doc, setDoc, addDoc, query, where, serverTimestamp, getDoc 
 } from "firebase/firestore";
 import { useAuth } from "@/hooks/useAuth";
 import BotaoVoltar from "@/components/BotaoVoltar";
 
-// Bibliotecas de Exportação
+import { initializeApp, deleteApp, FirebaseApp } from "firebase/app";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "firebase/auth";
+
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
+
+// ============================================================================
+// 1. Interfaces e Constantes
+// ============================================================================
 
 interface Props {
   condominioId?: string;
@@ -78,6 +73,41 @@ const PERFIS_MORADOR = [
   { value: "outro", label: "Outro" },
 ];
 
+// ============================================================================
+// 2. Funções Auxiliares
+// ============================================================================
+
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const ordenacaoNatural = (a: string, b: string) => {
+  return new Intl.Collator("pt-BR", { numeric: true, sensitivity: "base" }).compare(a || "", b || "");
+};
+
+const getNomePerfil = (valor: string) => {
+  return PERFIS_MORADOR.find((p) => p.value === valor)?.label || valor;
+};
+
+const normalizarPerfil = (valorBruto: string): string => {
+  const v = (valorBruto || "").toString().trim().toLowerCase();
+  if (!v) return "proprietario";
+  if (["proprietario", "proprietário"].includes(v)) return "proprietario";
+  if (["locatario", "locatário"].includes(v)) return "locatario";
+  if (["dependente"].includes(v)) return "dependente";
+  if (["funcionario", "funcionário"].includes(v)) return "funcionario";
+  const peloLabel = PERFIS_MORADOR.find((p) => p.label.toLowerCase() === v);
+  return peloLabel ? peloLabel.value : "proprietario";
+};
+
+const validarEmail = (email: string) => {
+    const emailLimpo = email.trim();
+    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return re.test(emailLimpo);
+};
+
+// ============================================================================
+// 3. Componente Principal
+// ============================================================================
+
 export default function GerenciarMoradores({ condominioId: adminCondominioId }: Props) {
   const { user } = useAuth();
   const [fetchedCondominioId, setFetchedCondominioId] = useState<string>("");
@@ -85,42 +115,46 @@ export default function GerenciarMoradores({ condominioId: adminCondominioId }: 
   const [moradores, setMoradores] = useState<Morador[]>([]);
   const [unidades, setUnidades] = useState<Unidade[]>([]);
   const [blocos, setBlocos] = useState<Bloco[]>([]);
-  
   const [loading, setLoading] = useState(true);
+  const [selecionados, setSelecionados] = useState<string[]>([]);
+
   const [modalAberto, setModalAberto] = useState(false);
   const [modoEdicao, setModoEdicao] = useState(false);
   const [moradorEditando, setMoradorEditando] = useState<Morador | null>(null);
-  const [modalImportacao, setModalImportacao] = useState(false);
-
-  // --- FILTROS ---
+  
   const [busca, setBusca] = useState("");
   const [filtroPerfil, setFiltroPerfil] = useState("todos");
   const [filtroBlocoId, setFiltroBlocoId] = useState("todos");
   const [filtroUnidadeId, setFiltroUnidadeId] = useState("todos");
 
-  // Formulário
-  const [nome, setNome] = useState("");
-  const [email, setEmail] = useState("");
-  const [whatsapp, setWhatsapp] = useState("");
-  const [perfil, setPerfil] = useState("proprietario");
-  const [blocoSelecionado, setBlocoSelecionado] = useState("");
-  const [numeroApartamento, setNumeroApartamento] = useState("");
-  const [complemento, setComplemento] = useState("");
-  const [ativo, setAtivo] = useState(true);
-  const [senha, setSenha] = useState("");
+  const [form, setForm] = useState({
+    nome: "",
+    email: "",
+    whatsapp: "",
+    perfil: "proprietario",
+    blocoSelecionado: "",
+    numeroApartamento: "",
+    complemento: "",
+    ativo: true,
+    senha: "",
+  });
+
+  const [modalImportacao, setModalImportacao] = useState(false);
+  const [arquivoImportacao, setArquivoImportacao] = useState<File | null>(null);
+  const [importando, setImportando] = useState(false);
+  const [statusImportacao, setStatusImportacao] = useState("");
+  const [cooldown, setCooldown] = useState(0);
+  const [logImportacao, setLogImportacao] = useState<string[]>([]);
 
   const targetCondominioId = adminCondominioId || user?.condominioId || fetchedCondominioId;
   const backRoute = user?.role === "porteiro" ? "/dashboard-porteiro" : "/dashboard-responsavel";
 
-  // Garantir ID do condomínio se não vier pelo hook
   useEffect(() => {
     async function garantirCondominioId() {
       if (user?.uid && !user.condominioId && !adminCondominioId) {
         try {
           const snap = await getDoc(doc(db, "users", user.uid));
-          if (snap.exists()) {
-            setFetchedCondominioId(snap.data().condominioId);
-          }
+          if (snap.exists()) setFetchedCondominioId(snap.data().condominioId);
         } catch (error) {
           console.error("Erro ao buscar detalhes do usuário", error);
         }
@@ -130,9 +164,7 @@ export default function GerenciarMoradores({ condominioId: adminCondominioId }: 
   }, [user, adminCondominioId]);
 
   useEffect(() => {
-    if (targetCondominioId) {
-      carregarDados();
-    }
+    if (targetCondominioId) carregarDados();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetCondominioId]);
 
@@ -147,10 +179,9 @@ export default function GerenciarMoradores({ condominioId: adminCondominioId }: 
       const q = query(collection(db, "blocos"), where("condominioId", "==", targetCondominioId));
       const snapshot = await getDocs(q);
       const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as Bloco[];
-      // Ordenação Front-end
-      setBlocos(data.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR", { numeric: true })));
+      setBlocos(data.sort((a, b) => ordenacaoNatural(a.nome, b.nome)));
     } catch (err) {
-      console.error("Erro ao carregar blocos:", err);
+      console.error("Erro blocos:", err);
     }
   };
 
@@ -159,9 +190,9 @@ export default function GerenciarMoradores({ condominioId: adminCondominioId }: 
       const q = query(collection(db, "unidades"), where("condominioId", "==", targetCondominioId));
       const snapshot = await getDocs(q);
       const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as Unidade[];
-      setUnidades(data.sort((a, b) => a.identificacao.localeCompare(b.identificacao, "pt-BR", { numeric: true })));
+      setUnidades(data.sort((a, b) => ordenacaoNatural(a.identificacao, b.identificacao)));
     } catch (err) {
-      console.error("Erro ao carregar unidades:", err);
+      console.error("Erro unidades:", err);
     }
   };
 
@@ -174,58 +205,100 @@ export default function GerenciarMoradores({ condominioId: adminCondominioId }: 
       );
       const snapshot = await getDocs(q);
       const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as Morador[];
-      // Ordenação por criação (recente primeiro) ou nome
-      setMoradores(data.sort((a, b) => (a.nome || "").localeCompare(b.nome || "")));
+      setMoradores(data);
     } catch (err) {
-      console.error("Erro ao carregar moradores:", err);
+      console.error("Erro moradores:", err);
     }
+  };
+
+  // --- UI Lógica ---
+
+  const toggleSelecionarTodos = (checked: boolean) => {
+    if (checked) {
+      const idsVisiveis = moradoresFiltrados.map(m => m.id);
+      setSelecionados(idsVisiveis);
+    } else {
+      setSelecionados([]);
+    }
+  };
+
+  const toggleSelecionarUm = (id: string) => {
+    setSelecionados(prev => 
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  const excluirSelecionados = async () => {
+    if (selecionados.length === 0) return;
+    if (!confirm(`Tem certeza que deseja excluir ${selecionados.length} moradores?`)) return;
+
+    setLoading(true);
+    try {
+      const deletePromises = selecionados.map(id => deleteDoc(doc(db, "users", id)));
+      await Promise.all(deletePromises);
+
+      setMoradores(prev => prev.filter(m => !selecionados.includes(m.id)));
+      setSelecionados([]);
+      alert("Moradores excluídos com sucesso!");
+    } catch (err) {
+      console.error("Erro ao excluir em massa:", err);
+      alert("Ocorreu um erro ao excluir.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const atualizarForm = (campo: string, valor: any) => {
+    setForm((prev) => ({ ...prev, [campo]: valor }));
   };
 
   const abrirModalNovo = () => {
     setModoEdicao(false);
     setMoradorEditando(null);
-    setNome("");
-    setEmail("");
-    setWhatsapp("");
-    setPerfil("proprietario");
-    setBlocoSelecionado("");
-    setNumeroApartamento("");
-    setComplemento("");
-    setAtivo(true);
-    setSenha("");
+    setForm({
+      nome: "",
+      email: "",
+      whatsapp: "",
+      perfil: "proprietario",
+      blocoSelecionado: "",
+      numeroApartamento: "",
+      complemento: "",
+      ativo: true,
+      senha: "",
+    });
     setModalAberto(true);
   };
 
   const abrirModalEditar = (morador: Morador) => {
     setModoEdicao(true);
     setMoradorEditando(morador);
-    setNome(morador.nome);
-    setEmail(morador.email);
-    setWhatsapp(morador.whatsapp);
-    setPerfil(morador.perfil || "proprietario");
-    setAtivo(morador.ativo === true || String(morador.ativo) === "true");
-
+    
     let blocoIdRestaurado = morador.blocoId || "";
     if (!blocoIdRestaurado) {
       const unidadeVinculada = unidades.find((u) => u.id === morador.unidadeId);
       if (unidadeVinculada?.blocoId) blocoIdRestaurado = unidadeVinculada.blocoId;
     }
-    setBlocoSelecionado(blocoIdRestaurado);
 
     const unidadeVinculada = unidades.find((u) => u.id === morador.unidadeId);
-    setNumeroApartamento(unidadeVinculada ? unidadeVinculada.identificacao : morador.unidadeNome || "");
-    setComplemento(morador.complemento || "");
-    setModalAberto(true);
-  };
 
-  const handleNumeroChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const valor = e.target.value;
-    const apenasNumeros = valor.replace(/[^0-9]/g, "");
-    setNumeroApartamento(apenasNumeros);
+    setForm({
+      nome: morador.nome,
+      email: morador.email,
+      whatsapp: morador.whatsapp,
+      perfil: morador.perfil || "proprietario",
+      blocoSelecionado: blocoIdRestaurado,
+      numeroApartamento: unidadeVinculada ? unidadeVinculada.identificacao : morador.unidadeNome || "",
+      complemento: morador.complemento || "",
+      ativo: morador.ativo === true || String(morador.ativo) === "true",
+      senha: "",
+    });
+    setModalAberto(true);
   };
 
   const salvarMorador = async () => {
     if (!targetCondominioId) return;
+    const { nome, email, whatsapp, blocoSelecionado, numeroApartamento, senha, perfil, complemento, ativo } = form;
+
     if (!nome.trim() || !email.trim() || !whatsapp.trim() || !blocoSelecionado || !numeroApartamento) {
       alert("Preencha todos os campos obrigatórios.");
       return;
@@ -238,6 +311,7 @@ export default function GerenciarMoradores({ condominioId: adminCondominioId }: 
     try {
       setLoading(true);
       let unidadeIdFinal = "";
+      
       const unidadeExistente = unidades.find(
         (u) => u.blocoId === blocoSelecionado && u.identificacao === numeroApartamento
       );
@@ -259,25 +333,22 @@ export default function GerenciarMoradores({ condominioId: adminCondominioId }: 
           criadoEm: serverTimestamp(),
         });
         unidadeIdFinal = novaUnidadeRef.id;
-        // Atualiza estado local de unidades para refletir imediatamente
-        setUnidades((prev) => [
-          ...prev,
-          {
+        const novaUnidade: Unidade = {
             id: unidadeIdFinal,
             identificacao: numeroApartamento,
             tipo: "apartamento",
             blocoSetor: nomeDoBloco,
             blocoId: blocoSelecionado,
-          } as Unidade,
-        ]);
+        };
+        setUnidades((prev) => [...prev, novaUnidade].sort((a,b) => ordenacaoNatural(a.identificacao, b.identificacao)));
       }
 
       const dadosMorador: any = {
         nome: nome.trim(),
         email: email.trim(),
         whatsapp: whatsapp.replace(/\D/g, ""),
-        perfil: perfil || "proprietario",
-        perfilMorador: perfil || "proprietario",
+        perfil: perfil,
+        perfilMorador: perfil,
         unidadeId: unidadeIdFinal,
         unidadeNome: numeroApartamento,
         blocoId: blocoSelecionado,
@@ -287,6 +358,8 @@ export default function GerenciarMoradores({ condominioId: adminCondominioId }: 
         condominioId: targetCondominioId,
         role: "morador",
         ativo: !!ativo,
+        aprovado: true,
+        statusAprovacao: "ok",
       };
 
       if (modoEdicao && moradorEditando) {
@@ -296,23 +369,36 @@ export default function GerenciarMoradores({ condominioId: adminCondominioId }: 
         });
         alert("Morador atualizado com sucesso!");
       } else {
-        // ATENÇÃO: createUserWithEmailAndPassword desloga o admin atual.
-        // Em um app real, ideal seria usar uma Cloud Function ou App Secundário.
-        const userCredential = await createUserWithEmailAndPassword(auth, email, senha);
-        const uid = userCredential.user.uid;
-        await setDoc(doc(db, "users", uid), {
-          ...dadosMorador,
-          criadoEm: serverTimestamp(),
-        });
-        alert("Morador cadastrado! (Você pode ter sido desconectado por segurança)");
+        const config = db.app.options;
+        const secondaryApp = initializeApp(config, "SecondaryAppSingle" + Date.now());
+        const secondaryAuth = getAuth(secondaryApp);
+        
+        try {
+            const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, senha);
+            await setDoc(doc(db, "users", userCredential.user.uid), {
+              ...dadosMorador,
+              criadoEm: serverTimestamp(),
+            });
+            await signOut(secondaryAuth);
+            deleteApp(secondaryApp);
+            alert("Morador cadastrado!");
+        } catch (e: any) {
+            deleteApp(secondaryApp);
+            if (e.code === 'auth/email-already-in-use') {
+                alert("Este e-mail já está cadastrado.");
+            } else {
+                alert("Erro: " + e.message);
+            }
+        }
       }
 
       setModalAberto(false);
       carregarMoradores();
       if (!unidadeExistente) carregarUnidades();
+
     } catch (err: any) {
-      console.error("Erro ao salvar morador:", err);
-      alert("Erro ao salvar: " + (err.message || "Erro desconhecido"));
+      console.error("Erro ao salvar:", err);
+      alert("Erro: " + (err.message || "Erro desconhecido"));
     } finally {
       setLoading(false);
     }
@@ -324,36 +410,32 @@ export default function GerenciarMoradores({ condominioId: adminCondominioId }: 
         ativo: !morador.ativo,
         atualizadoEm: serverTimestamp(),
       });
-      carregarMoradores();
+      setMoradores(prev => prev.map(m => m.id === morador.id ? { ...m, ativo: !m.ativo } : m));
     } catch (err) {
-      console.error("Erro ao alterar status:", err);
-      alert("Não foi possível alterar o status.");
+      console.error("Erro status:", err);
+      alert("Erro ao alterar status.");
     }
   };
 
   const excluirMorador = async (morador: Morador) => {
-    if (!confirm(`Excluir ${morador.nome}? Esta ação não pode ser desfeita.`)) return;
+    if (!confirm(`Excluir ${morador.nome}?`)) return;
     try {
       await deleteDoc(doc(db, "users", morador.id));
-      carregarMoradores();
+      setMoradores(prev => prev.filter(m => m.id !== morador.id));
+      setSelecionados(prev => prev.filter(id => id !== morador.id));
     } catch (err) {
-      console.error("Erro ao excluir:", err);
-      alert("Erro ao excluir morador.");
+      console.error("Erro exclusão:", err);
+      alert("Erro ao excluir.");
     }
   };
 
-  const getNomeUnidade = (unidadeId: string) => {
+  const getNomeUnidade = useCallback((unidadeId: string) => {
     const unidade = unidades.find((u) => u.id === unidadeId);
     return unidade ? unidade.identificacao : "-";
-  };
+  }, [unidades]);
 
-  const getNomePerfil = (valor: string) => {
-    return PERFIS_MORADOR.find((p) => p.value === valor)?.label || valor;
-  };
-
-  // --- FILTRAGEM ---
   const moradoresFiltrados = useMemo(() => {
-    return moradores.filter((morador) => {
+    const filtrados = moradores.filter((morador) => {
       const termo = busca.toLowerCase();
       const matchBusca =
         morador.nome.toLowerCase().includes(termo) ||
@@ -366,26 +448,35 @@ export default function GerenciarMoradores({ condominioId: adminCondominioId }: 
 
       return matchBusca && matchPerfil && matchBloco && matchUnidade;
     });
-  }, [moradores, busca, filtroPerfil, filtroBlocoId, filtroUnidadeId]);
+
+    return filtrados.sort((a, b) => {
+      const blocoA = a.blocoNome || a.bloco || "";
+      const blocoB = b.blocoNome || b.bloco || "";
+      const compBloco = ordenacaoNatural(blocoA, blocoB);
+      if (compBloco !== 0) return compBloco;
+
+      const unidA = a.unidadeNome || getNomeUnidade(a.unidadeId) || "";
+      const unidB = b.unidadeNome || getNomeUnidade(b.unidadeId) || "";
+      const compUnid = ordenacaoNatural(unidA, unidB);
+      if (compUnid !== 0) return compUnid;
+
+      return a.nome.localeCompare(b.nome);
+    });
+  }, [moradores, busca, filtroPerfil, filtroBlocoId, filtroUnidadeId, getNomeUnidade]);
 
   const unidadesParaFiltro = useMemo(() => {
-    return filtroBlocoId === "todos"
+    const lista = filtroBlocoId === "todos"
       ? unidades
       : unidades.filter((u) => u.blocoId === filtroBlocoId);
+    return lista;
   }, [unidades, filtroBlocoId]);
 
-  // --- EXPORTAÇÃO ---
   const gerarPDF = () => {
     const docPdf = new jsPDF();
     docPdf.text("Relatório de Moradores", 14, 15);
     docPdf.setFontSize(10);
-    
-    let sub = `Gerado em: ${new Date().toLocaleDateString("pt-BR")} | Total: ${moradoresFiltrados.length}`;
-    if(filtroBlocoId !== "todos") {
-        const bl = blocos.find(b => b.id === filtroBlocoId)?.nome;
-        sub += ` | Filtro: ${bl}`;
-    }
-    docPdf.text(sub, 14, 22);
+    const filtroTexto = filtroBlocoId !== "todos" ? ` | Bloco: ${blocos.find(b => b.id === filtroBlocoId)?.nome}` : "";
+    docPdf.text(`Gerado em: ${new Date().toLocaleDateString()} | Total: ${moradoresFiltrados.length}${filtroTexto}`, 14, 22);
 
     const body = moradoresFiltrados.map((m) => [
       m.nome,
@@ -402,7 +493,7 @@ export default function GerenciarMoradores({ condominioId: adminCondominioId }: 
       body,
       startY: 28,
       styles: { fontSize: 8 },
-      headStyles: { fillColor: [5, 115, 33] }
+      headStyles: { fillColor: [5, 115, 33] },
     });
     docPdf.save("moradores.pdf");
   };
@@ -417,454 +508,404 @@ export default function GerenciarMoradores({ condominioId: adminCondominioId }: 
       Unidade: getNomeUnidade(m.unidadeId),
       Status: m.ativo ? "Ativo" : "Inativo",
     }));
-
     const worksheet = XLSX.utils.json_to_sheet(dadosExcel);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Moradores");
     XLSX.writeFile(workbook, "moradores.xlsx");
   };
 
-  if (loading && !targetCondominioId) {
-    return (
-      <div className="flex items-center justify-center p-12">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#057321] mx-auto"></div>
-          <p className="mt-4 text-gray-600">Carregando...</p>
-        </div>
-      </div>
-    );
-  }
+  // --- IMPORTAÇÃO COM RECUPERAÇÃO E ANTI-BLOQUEIO ---
+  const processarImportacao = async () => {
+    if (!arquivoImportacao || !targetCondominioId) return;
+    setImportando(true);
+    setLogImportacao([]);
+    setStatusImportacao("Iniciando leitura do arquivo...");
+
+    let secondaryApp: FirebaseApp | null = null;
+    let secondaryAuth: any = null;
+
+    try {
+      const config = db.app.options;
+      secondaryApp = initializeApp(config, "SecondaryImportApp" + Date.now());
+      secondaryAuth = getAuth(secondaryApp);
+
+      const buffer = await arquivoImportacao.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: "array" });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const json: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+
+      if (json.length < 2) throw new Error("Planilha vazia ou sem cabeçalho.");
+
+      const header = json[0].map((h: any) => String(h).trim().toLowerCase());
+      const findIdx = (terms: string[]) => header.findIndex((h) => terms.some(t => h.includes(t)));
+
+      const idx = {
+        nome: findIdx(["nome", "morador"]),
+        email: findIdx(["email", "mail"]),
+        whats: findIdx(["whatsapp", "celular", "telefone"]),
+        perfil: findIdx(["perfil", "tipo"]),
+        bloco: findIdx(["bloco", "torre"]),
+        unidade: findIdx(["unidade", "apto", "apartamento"]),
+        compl: findIdx(["complemento", "obs"]),
+        ativo: findIdx(["ativo", "status"]),
+      };
+
+      if (idx.nome === -1 || idx.email === -1 || idx.bloco === -1 || idx.unidade === -1) {
+        throw new Error("Colunas obrigatórias não encontradas: Nome, Email, Bloco, Unidade.");
+      }
+
+      let criados = 0;
+      let atualizados = 0;
+      let recuperados = 0;
+      let logsTemp: string[] = [];
+      const total = json.length - 1;
+
+      for (let i = 1; i < json.length; i++) {
+        // Delay padrão de 3s
+        if (i > 1) await delay(3000); 
+
+        setStatusImportacao(`Processando ${i} de ${total}...`);
+        
+        const row = json[i];
+        const nome = String(row[idx.nome] || "").trim();
+        const email = String(row[idx.email] || "").trim();
+        const blocoRaw = String(row[idx.bloco] || "").trim();
+        const unidadeRaw = String(row[idx.unidade] || "").trim();
+
+        if (!nome || !email || !blocoRaw || !unidadeRaw) continue;
+
+        if (!validarEmail(email)) {
+            logsTemp.push(`Linha ${i + 1}: E-mail inválido (${email}).`);
+            continue;
+        }
+
+        const blocoAlvo = blocoRaw.toLowerCase().replace(/^bloco\s*/, "");
+        const blocoMatch = blocos.find(b => 
+           b.nome.toLowerCase().replace(/^bloco\s*/, "") === blocoAlvo
+        );
+
+        if (!blocoMatch) {
+            logsTemp.push(`Linha ${i + 1}: Bloco '${blocoRaw}' não existe.`);
+            continue;
+        }
+
+        let unidadeId = "";
+        const unidExistente = unidades.find(u => u.blocoId === blocoMatch.id && u.identificacao === unidadeRaw);
+        
+        if (unidExistente) {
+            unidadeId = unidExistente.id;
+        } else {
+            const ref = await addDoc(collection(db, "unidades"), {
+                identificacao: unidadeRaw,
+                tipo: "apartamento",
+                blocoId: blocoMatch.id,
+                blocoSetor: blocoMatch.nome,
+                condominioId: targetCondominioId,
+                status: "ocupado",
+                proprietario: nome,
+                criadoEm: serverTimestamp()
+            });
+            unidadeId = ref.id;
+            unidades.push({ id: unidadeId, identificacao: unidadeRaw, tipo: "apt", blocoSetor: blocoMatch.nome, blocoId: blocoMatch.id });
+        }
+
+        const dadosMorador = {
+            nome,
+            email,
+            whatsapp: String(row[idx.whats] || "").replace(/\D/g, ""),
+            perfil: normalizarPerfil(row[idx.perfil]),
+            unidadeId,
+            unidadeNome: unidadeRaw,
+            blocoId: blocoMatch.id,
+            blocoNome: blocoMatch.nome,
+            complemento: String(row[idx.compl] || ""),
+            condominioId: targetCondominioId,
+            role: "morador",
+            ativo: true,
+            aprovado: true,
+        };
+
+        // LOOP DE TENTATIVA (Retry Logic)
+        let sucesso = false;
+        while (!sucesso) {
+            try {
+                // 1. TENTA ACHAR NO BANCO
+                const qUser = query(collection(db, "users"), where("email", "==", email));
+                const querySnapshot = await getDocs(qUser);
+
+                if (!querySnapshot.empty) {
+                    // ATUALIZA
+                    const userDoc = querySnapshot.docs[0];
+                    await updateDoc(doc(db, "users", userDoc.id), {
+                        ...dadosMorador,
+                        atualizadoEm: serverTimestamp()
+                    });
+                    atualizados++;
+                    sucesso = true;
+                } else {
+                    // 2. TENTA CRIAR
+                    try {
+                        const cred = await createUserWithEmailAndPassword(secondaryAuth, email, "123456");
+                        await setDoc(doc(db, "users", cred.user.uid), {
+                            ...dadosMorador,
+                            criadoEm: serverTimestamp()
+                        });
+                        await signOut(secondaryAuth);
+                        criados++;
+                        sucesso = true;
+                    } catch (authErr: any) {
+                        if (authErr.code === 'auth/email-already-in-use') {
+                            // 3. TENTA RECUPERAR (LOGIN NO ÓRFÃO)
+                            try {
+                                const userCredential = await signInWithEmailAndPassword(secondaryAuth, email, "123456");
+                                const uid = userCredential.user.uid;
+                                await setDoc(doc(db, "users", uid), {
+                                    ...dadosMorador,
+                                    criadoEm: serverTimestamp()
+                                }, { merge: true });
+                                await signOut(secondaryAuth);
+                                recuperados++;
+                                logsTemp.push(`Linha ${i + 1}: Usuário recuperado.`);
+                                sucesso = true;
+                            } catch (loginErr: any) {
+                                if (loginErr.code === 'auth/too-many-requests') {
+                                    throw loginErr; // Joga pro catch externo pra ativar o cooldown
+                                }
+                                logsTemp.push(`Linha ${i + 1}: Email existe, mas senha não é padrão. Impossível recuperar.`);
+                                sucesso = true; // Desiste desse
+                            }
+                        } else if (authErr.code === 'auth/too-many-requests') {
+                             throw authErr; // Joga pro catch externo
+                        } else {
+                            logsTemp.push(`Linha ${i + 1}: Erro Auth (${authErr.code})`);
+                            sucesso = true; 
+                        }
+                    }
+                }
+            } catch (e: any) {
+                if (e.code === 'auth/too-many-requests') {
+                    setStatusImportacao(`Bloqueio de segurança detectado! Pausando por 60 segundos...`);
+                    for (let t = 60; t > 0; t--) {
+                        setCooldown(t);
+                        await delay(1000);
+                    }
+                    setCooldown(0);
+                    setStatusImportacao(`Retomando importação (Linha ${i+1})...`);
+                    // Não define sucesso=true, repete o loop
+                } else {
+                    logsTemp.push(`Linha ${i + 1}: Erro Geral (${e.message})`);
+                    sucesso = true;
+                }
+            }
+        }
+      }
+
+      setLogImportacao([`Finalizado: ${criados} criados, ${atualizados} atualizados, ${recuperados} recuperados.`, ...logsTemp]);
+      await carregarDados(); 
+
+    } catch (err: any) {
+      alert("Erro fatal: " + err.message);
+    } finally {
+      if (secondaryApp) deleteApp(secondaryApp);
+      setImportando(false);
+      setStatusImportacao("");
+      setCooldown(0);
+    }
+  };
 
   if (!targetCondominioId && !loading) {
     return (
-        <div className="flex flex-col items-center justify-center p-12 text-center">
-            <XCircle className="text-red-500 mb-2" size={40} />
-            <h3 className="text-lg font-bold text-gray-900">Nenhum Condomínio Identificado</h3>
-            <p className="text-gray-500 mt-1">Não foi possível carregar os dados.</p>
-        </div>
+      <div className="flex flex-col items-center justify-center p-12 text-center">
+        <XCircle className="text-red-500 mb-2" size={40} />
+        <h3 className="text-lg font-bold text-gray-900">Condomínio não identificado</h3>
+      </div>
     );
   }
 
   return (
     <div className="space-y-6">
+      
+      {importando && (
+        <div className="fixed inset-0 z-[60] bg-black/90 flex flex-col items-center justify-center text-white p-4 transition-all">
+            {cooldown > 0 ? (
+                <div className="flex flex-col items-center animate-pulse">
+                    <Clock size={64} className="text-yellow-400 mb-4" />
+                    <h2 className="text-4xl font-bold text-yellow-400 mb-2">{cooldown}s</h2>
+                    <p className="text-xl">Resfriando o sistema para evitar bloqueio...</p>
+                </div>
+            ) : (
+                <>
+                    <Loader2 className="animate-spin mb-4 text-green-500" size={48} />
+                    <h2 className="text-2xl font-bold mb-2">Importando...</h2>
+                </>
+            )}
+            
+            <p className="text-lg text-gray-300 mb-8 mt-4 text-center max-w-lg">{statusImportacao}</p>
+            
+            <div className="bg-white/10 p-4 rounded-lg border border-white/20 max-w-md text-center">
+                <p className="font-bold text-yellow-400 mb-1">⚠️ NÃO FECHE ESTA TELA</p>
+                <p className="text-sm">Se o sistema pausar, ele voltará sozinho. Pode demorar, mas vai terminar.</p>
+            </div>
+        </div>
+      )}
+
       <div className="w-fit">
         <BotaoVoltar url={backRoute} />
       </div>
 
-      {/* Header */}
-      <div className="bg-white p-6 rounded-xl shadow-sm flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
+      <div className="bg-white p-6 rounded-xl shadow-sm flex flex-col xl:flex-row justify-between items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Gerenciar Moradores</h1>
-          <p className="text-gray-600 text-sm">Cadastre moradores e vincule às unidades</p>
+          <div className="flex gap-2 items-center">
+            <p className="text-gray-600 text-sm">
+               Total: <span className="font-bold">{moradores.length}</span>
+            </p>
+            {selecionados.length > 0 && (
+                <button 
+                  onClick={excluirSelecionados}
+                  className="ml-4 flex items-center gap-1 bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-bold hover:bg-red-200 transition"
+                >
+                  <Trash2 size={12} />
+                  Excluir {selecionados.length} selecionados
+                </button>
+            )}
+          </div>
         </div>
-
-        {/* Botões de Ação */}
-        <div className="grid grid-cols-2 sm:flex sm:flex-row gap-2 w-full xl:w-auto">
-          <button
-            onClick={gerarPDF}
-            className="flex items-center justify-center gap-2 px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-bold shadow-sm transition-colors"
-            title="Gerar PDF"
-          >
-            <FileText size={18} />
-            <span className="hidden sm:inline">PDF</span>
-          </button>
-
-          <button
-            onClick={gerarExcel}
-            className="flex items-center justify-center gap-2 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-bold shadow-sm transition-colors"
-            title="Gerar Excel"
-          >
-            <FileSpreadsheet size={18} />
-            <span className="hidden sm:inline">Excel</span>
-          </button>
-
-          <button
-            onClick={() => setModalImportacao(true)}
-            className="flex items-center justify-center gap-2 px-4 py-3 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium shadow-sm"
-          >
-            <Upload size={18} />
-            <span className="hidden sm:inline">Importar</span>
-          </button>
-
-          <button
-            onClick={abrirModalNovo}
-            className="col-span-2 sm:col-span-1 flex items-center justify-center gap-2 px-6 py-3 bg-[#057321] text-white rounded-lg hover:bg-[#046119] font-bold shadow-sm transition-colors"
-          >
-            <Plus size={20} /> Novo
-          </button>
+        
+        <div className="flex gap-2">
+           <button onClick={gerarPDF} className="p-3 bg-red-600 text-white rounded hover:bg-red-700" title="PDF"><FileText size={18} /></button>
+           <button onClick={gerarExcel} className="p-3 bg-green-600 text-white rounded hover:bg-green-700" title="Excel"><FileSpreadsheet size={18} /></button>
+           <button onClick={() => setModalImportacao(true)} className="p-3 bg-white border text-gray-700 rounded hover:bg-gray-50 flex items-center gap-2"><Upload size={18} /> <span className="hidden sm:inline">Importar</span></button>
+           <button onClick={abrirModalNovo} className="p-3 bg-[#057321] text-white rounded hover:bg-[#046119] flex items-center gap-2 font-bold"><Plus size={18} /> Novo</button>
         </div>
       </div>
 
-      {/* FILTROS */}
+      {/* Filtros */}
       <div className="bg-white p-6 rounded-xl shadow-sm grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Buscar Morador</label>
-          <div className="relative">
-            <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
-            <input
-              type="text"
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg pl-10 pr-4 py-2 focus:ring-2 focus:ring-green-500 focus:outline-none"
-              placeholder="Nome, email..."
-            />
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Filtrar por Perfil</label>
-          <select
-            value={filtroPerfil}
-            onChange={(e) => setFiltroPerfil(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-green-500 focus:outline-none bg-white"
-          >
-            <option value="todos">Todos</option>
-            {PERFIS_MORADOR.map((p) => (
-              <option key={p.value} value={p.value}>
-                {p.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Filtrar por Bloco</label>
-          <select
-            value={filtroBlocoId}
-            onChange={(e) => {
-              setFiltroBlocoId(e.target.value);
-              setFiltroUnidadeId("todos");
-            }}
-            className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-green-500 focus:outline-none bg-white"
-          >
-            <option value="todos">Todos os Blocos</option>
-            {blocos.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.nome}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Filtrar por Unidade</label>
-          <select
-            value={filtroUnidadeId}
-            onChange={(e) => setFiltroUnidadeId(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-green-500 focus:outline-none bg-white"
-          >
-            <option value="todos">Todas as Unidades</option>
-            {unidadesParaFiltro.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.identificacao} {filtroBlocoId === "todos" ? `- ${u.blocoSetor}` : ""}
-              </option>
-            ))}
-          </select>
-        </div>
+         <div className="relative">
+             <Search className="absolute left-3 top-3 text-gray-400" size={18} />
+             <input type="text" value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar morador..." className="w-full pl-10 border rounded-lg py-2" />
+         </div>
+         <select value={filtroPerfil} onChange={e => setFiltroPerfil(e.target.value)} className="border rounded-lg p-2">
+             <option value="todos">Todos Perfis</option>
+             {PERFIS_MORADOR.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+         </select>
+         <select value={filtroBlocoId} onChange={e => { setFiltroBlocoId(e.target.value); setFiltroUnidadeId("todos"); }} className="border rounded-lg p-2">
+             <option value="todos">Todos Blocos</option>
+             {blocos.map(b => <option key={b.id} value={b.id}>{b.nome}</option>)}
+         </select>
+         <select value={filtroUnidadeId} onChange={e => setFiltroUnidadeId(e.target.value)} className="border rounded-lg p-2">
+             <option value="todos">Todas Unidades</option>
+             {unidadesParaFiltro.map(u => <option key={u.id} value={u.id}>{u.identificacao} {filtroBlocoId === "todos" && `(${u.blocoSetor})`}</option>)}
+         </select>
       </div>
 
-      {/* Lista Mobile */}
-      <div className="md:hidden space-y-4">
-        {moradoresFiltrados.length === 0 ? (
-          <div className="text-center p-8 bg-white rounded-xl text-gray-500">
-            Nenhum morador encontrado
-          </div>
-        ) : (
-          moradoresFiltrados.map((morador) => (
-            <div
-              key={morador.id}
-              className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col gap-3"
-            >
-              <div className="flex justify-between items-start">
-                <div>
-                  <h3 className="font-bold text-gray-900 text-lg">{morador.nome}</h3>
-                  <p className="text-sm text-gray-500 break-all">{morador.email}</p>
-                </div>
-                <span
-                  className={`px-2 py-1 text-xs font-bold rounded-full ${
-                    morador.ativo ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"
-                  }`}
-                >
-                  {morador.ativo ? "Ativo" : "Inativo"}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 text-sm text-gray-700 bg-gray-50 p-3 rounded-lg">
-                <div>
-                  <span className="block text-xs text-gray-400 uppercase font-bold">Bloco</span>
-                  <span className="font-medium">{morador.blocoNome || morador.bloco || "-"}</span>
-                </div>
-                <div>
-                  <span className="block text-xs text-gray-400 uppercase font-bold">Unidade</span>
-                  <span className="font-medium">{getNomeUnidade(morador.unidadeId)}</span>
-                </div>
-                <div className="col-span-2">
-                  <span className="block text-xs text-gray-400 uppercase font-bold">Perfil</span>
-                  <span>{PERFIS_MORADOR.find((p) => p.value === morador.perfil)?.label || "-"}</span>
-                </div>
-              </div>
-
-              <div className="flex gap-2 mt-1">
-                <button
-                  onClick={() => abrirModalEditar(morador)}
-                  className="flex-1 flex items-center justify-center gap-2 p-2 bg-blue-50 text-blue-700 rounded-lg font-medium hover:bg-blue-100"
-                >
-                  <Edit2 size={16} /> Editar
-                </button>
-                <button
-                  onClick={() => alternarStatus(morador)}
-                  className={`flex-1 flex items-center justify-center gap-2 p-2 rounded-lg font-medium ${
-                    morador.ativo
-                      ? "bg-yellow-50 text-yellow-700 hover:bg-yellow-100"
-                      : "bg-green-50 text-green-700 hover:bg-green-100"
-                  }`}
-                >
-                  {morador.ativo ? <UserX size={16} /> : <UserCheck size={16} />}
-                  {morador.ativo ? "Desativar" : "Ativar"}
-                </button>
-                <button
-                  onClick={() => excluirMorador(morador)}
-                  className="flex items-center justify-center p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"
-                >
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-
-      {/* Tabela Desktop */}
-      <div className="hidden md:block bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Nome</th>
-                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Email</th>
-                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">WhatsApp</th>
-                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Perfil</th>
-                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Bloco</th>
-                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Unidade</th>
-                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {moradoresFiltrados.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
-                    Nenhum morador encontrado
-                  </td>
-                </tr>
-              ) : (
-                moradoresFiltrados.map((morador) => (
-                  <tr key={morador.id} className="hover:bg-gray-50 transition">
-                    <td className="px-6 py-4 font-medium text-gray-900">{morador.nome}</td>
-                    <td className="px-6 py-4 text-gray-600 text-sm">{morador.email}</td>
-                    <td className="px-6 py-4 text-gray-600 text-sm">{morador.whatsapp}</td>
-                    <td className="px-6 py-4">
-                      <span className="inline-flex px-2.5 py-0.5 text-xs font-bold rounded-full bg-purple-100 text-purple-800">
-                        {PERFIS_MORADOR.find((p) => p.value === morador.perfil)?.label || "-"}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-gray-600 text-sm">{morador.blocoNome || morador.bloco || "-"}</td>
-                    <td className="px-6 py-4 text-gray-600 text-sm">{getNomeUnidade(morador.unidadeId)}</td>
-                    <td className="px-6 py-4">
-                      <span
-                        className={`px-2.5 py-0.5 inline-flex text-xs font-bold rounded-full ${
-                          morador.ativo ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"
-                        }`}
-                      >
-                        {morador.ativo ? "Ativo" : "Inativo"}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                      <button
-                        onClick={() => abrirModalEditar(morador)}
-                        className="text-blue-600 hover:text-blue-900 font-bold"
-                      >
-                        Editar
-                      </button>
-                      <button
-                        onClick={() => alternarStatus(morador)}
-                        className="text-yellow-600 hover:text-yellow-900 font-bold"
-                      >
-                        {morador.ativo ? "Desativar" : "Ativar"}
-                      </button>
-                      <button
-                        onClick={() => excluirMorador(morador)}
-                        className="text-red-600 hover:text-red-900 font-bold"
-                      >
-                        Excluir
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Modal Novo/Editar */}
-      {modalAberto && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-xl shadow-lg p-6 w-full max-w-md my-8">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold">{modoEdicao ? "Editar Morador" : "Novo Morador"}</h3>
-              <button onClick={() => setModalAberto(false)} className="text-gray-400 hover:text-gray-600">
-                ✕
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo *</label>
-                <input
-                  type="text"
-                  value={nome}
-                  onChange={(e) => setNome(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-[#057321]"
-                  placeholder="João Silva"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-[#057321]"
-                  placeholder="joao@email.com"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">WhatsApp *</label>
-                <input
-                  type="tel"
-                  value={whatsapp}
-                  onChange={(e) => setWhatsapp(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-[#057321]"
-                  placeholder="81999999999"
-                />
-              </div>
-
-              {!modoEdicao && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Senha *</label>
-                  <input
-                    type="password"
-                    value={senha}
-                    onChange={(e) => setSenha(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-[#057321]"
-                    placeholder="Mínimo 6 caracteres"
-                  />
-                </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Perfil *</label>
-                <select
-                  value={perfil}
-                  onChange={(e) => setPerfil(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2 bg-white"
-                >
-                  {PERFIS_MORADOR.map((p) => (
-                    <option key={p.value} value={p.value}>
-                      {p.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Bloco *</label>
-                <select
-                  value={blocoSelecionado}
-                  onChange={(e) => setBlocoSelecionado(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2 bg-white"
-                >
-                  <option value="">Selecione o bloco</option>
-                  {blocos.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.nome}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Número do Apartamento *</label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={numeroApartamento}
-                  onChange={handleNumeroChange}
-                  disabled={!blocoSelecionado}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2 disabled:bg-gray-100 focus:ring-2 focus:ring-[#057321]"
-                  placeholder="Ex: 101"
-                />
-                <p className="text-xs text-gray-500 mt-1">Digite apenas números.</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Complemento (Opcional)</label>
-                <input
-                  type="text"
-                  value={complemento}
-                  onChange={(e) => setComplemento(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-[#057321]"
-                  placeholder="Ex: Fundos, Lado B..."
-                />
-              </div>
-
-              <div className="flex items-center gap-2 pt-2">
-                <input
-                  type="checkbox"
-                  id="ativo"
-                  checked={!!ativo}
-                  onChange={(e) => setAtivo(e.target.checked)}
-                  className="w-4 h-4 text-[#057321] rounded focus:ring-2 focus:ring-[#057321]"
-                />
-                <label htmlFor="ativo" className="text-sm font-medium text-gray-700">
-                  Morador ativo
-                </label>
-              </div>
-
-              <div className="flex gap-3 mt-6">
-                <button
-                  onClick={() => setModalAberto(false)}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={salvarMorador}
-                  disabled={loading}
-                  className="flex-1 px-4 py-2 bg-[#057321] text-white rounded-lg hover:bg-[#046119] disabled:opacity-50"
-                >
-                  {loading ? "Salvando..." : "Salvar"}
-                </button>
-              </div>
-            </div>
-          </div>
+      {/* Tabela */}
+      {loading ? (
+        <div className="text-center p-8">Carregando dados...</div>
+      ) : (
+        <div className="bg-white rounded-xl shadow-sm overflow-hidden border">
+           <div className="overflow-x-auto">
+             <table className="w-full">
+               <thead className="bg-gray-50 border-b">
+                 <tr>
+                   <th className="px-4 py-3 w-10 text-center">
+                     <input 
+                       type="checkbox" 
+                       className="w-4 h-4 rounded text-green-600 focus:ring-green-500"
+                       onChange={(e) => toggleSelecionarTodos(e.target.checked)}
+                       checked={moradoresFiltrados.length > 0 && selecionados.length === moradoresFiltrados.length}
+                     />
+                   </th>
+                   {["Nome", "Email", "WhatsApp", "Perfil", "Bloco", "Unidade", "Status", "Ações"].map(h => 
+                     <th key={h} className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">{h}</th>
+                   )}
+                 </tr>
+               </thead>
+               <tbody className="divide-y">
+                 {moradoresFiltrados.length === 0 ? (
+                    <tr><td colSpan={9} className="p-8 text-center text-gray-500">Nenhum morador encontrado</td></tr>
+                 ) : (
+                    moradoresFiltrados.map(m => (
+                        <tr key={m.id} className={`hover:bg-gray-50 ${selecionados.includes(m.id) ? 'bg-green-50' : ''}`}>
+                            <td className="px-4 py-4 text-center">
+                                <input 
+                                  type="checkbox" 
+                                  className="w-4 h-4 rounded text-green-600 focus:ring-green-500"
+                                  checked={selecionados.includes(m.id)}
+                                  onChange={() => toggleSelecionarUm(m.id)}
+                                />
+                            </td>
+                            <td className="px-6 py-4 font-medium">{m.nome}</td>
+                            <td className="px-6 py-4 text-sm text-gray-600">{m.email}</td>
+                            <td className="px-6 py-4 text-sm text-gray-600">{m.whatsapp}</td>
+                            <td className="px-6 py-4"><span className="px-2 py-1 text-xs bg-purple-100 text-purple-800 rounded-full font-bold">{getNomePerfil(m.perfil)}</span></td>
+                            <td className="px-6 py-4 text-sm">{m.blocoNome || m.bloco || "-"}</td>
+                            <td className="px-6 py-4 text-sm font-bold">{getNomeUnidade(m.unidadeId)}</td>
+                            <td className="px-6 py-4"><span className={`px-2 py-1 text-xs rounded-full font-bold ${m.ativo ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{m.ativo ? 'Ativo' : 'Inativo'}</span></td>
+                            <td className="px-6 py-4 flex gap-2">
+                                <button onClick={() => abrirModalEditar(m)} className="text-blue-600 font-bold text-sm hover:underline">Editar</button>
+                                <button onClick={() => alternarStatus(m)} className="text-yellow-600 font-bold text-sm hover:underline">{m.ativo ? "Desativar" : "Ativar"}</button>
+                                <button onClick={() => excluirMorador(m)} className="text-red-600 font-bold text-sm hover:underline">Excluir</button>
+                            </td>
+                        </tr>
+                    ))
+                 )}
+               </tbody>
+             </table>
+           </div>
         </div>
       )}
 
-      {/* Modal Importação (Placeholder) */}
-      {modalImportacao && (
+      {modalImportacao && !importando && (
+         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-lg p-6 w-full max-w-lg">
+                <h3 className="text-lg font-bold mb-4">Importar Excel</h3>
+                <input type="file" accept=".xlsx,.xls" onChange={e => setArquivoImportacao(e.target.files?.[0] || null)} className="mb-4" />
+                <div className="bg-gray-100 p-2 text-xs rounded mb-4">
+                    Colunas: Nome | Email | WhatsApp | Perfil | Bloco | Unidade
+                </div>
+                {logImportacao.length > 0 && <div className="max-h-32 overflow-auto bg-gray-50 p-2 mb-4 text-xs">{logImportacao.map((l, i) => <p key={i}>{l}</p>)}</div>}
+                <div className="flex gap-2">
+                    <button onClick={() => setModalImportacao(false)} className="flex-1 border p-2 rounded">Fechar</button>
+                    <button onClick={processarImportacao} disabled={!arquivoImportacao} className="flex-1 bg-green-600 text-white p-2 rounded font-bold">Iniciar</button>
+                </div>
+            </div>
+         </div>
+      )}
+
+      {modalAberto && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-sm">
-            <h2 className="text-lg font-bold mb-4">Importação de Excel</h2>
-            <p className="text-gray-600 mb-4">Funcionalidade em manutenção para o novo formato.</p>
-            <button
-              onClick={() => setModalImportacao(false)}
-              className="w-full px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 font-medium"
-            >
-              Fechar
-            </button>
-          </div>
+            <div className="bg-white rounded-xl shadow-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
+                {/* Modal Form Content */}
+                <div className="flex justify-between mb-4">
+                    <h3 className="text-lg font-bold">{modoEdicao ? "Editar" : "Novo"} Morador</h3>
+                    <button onClick={() => setModalAberto(false)}>✕</button>
+                </div>
+                <div className="space-y-3">
+                    <input className="w-full border p-2 rounded" placeholder="Nome" value={form.nome} onChange={e => atualizarForm("nome", e.target.value)} />
+                    <input className="w-full border p-2 rounded" placeholder="Email" type="email" value={form.email} onChange={e => atualizarForm("email", e.target.value)} />
+                    <input className="w-full border p-2 rounded" placeholder="WhatsApp" value={form.whatsapp} onChange={e => atualizarForm("whatsapp", e.target.value)} />
+                    {!modoEdicao && <input className="w-full border p-2 rounded" placeholder="Senha (min 6)" type="password" value={form.senha} onChange={e => atualizarForm("senha", e.target.value)} />}
+                    <select className="w-full border p-2 rounded" value={form.perfil} onChange={e => atualizarForm("perfil", e.target.value)}>
+                        {PERFIS_MORADOR.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                    </select>
+                    <select className="w-full border p-2 rounded" value={form.blocoSelecionado} onChange={e => atualizarForm("blocoSelecionado", e.target.value)}>
+                        <option value="">Selecione Bloco</option>
+                        {blocos.map(b => <option key={b.id} value={b.id}>{b.nome}</option>)}
+                    </select>
+                    <input className="w-full border p-2 rounded" placeholder="Número Apto (Ex: 101)" value={form.numeroApartamento} onChange={e => atualizarForm("numeroApartamento", e.target.value.replace(/[^0-9]/g, ""))} disabled={!form.blocoSelecionado} />
+                    <input className="w-full border p-2 rounded" placeholder="Complemento" value={form.complemento} onChange={e => atualizarForm("complemento", e.target.value)} />
+                    <div className="flex items-center gap-2">
+                        <input type="checkbox" checked={form.ativo} onChange={e => atualizarForm("ativo", e.target.checked)} />
+                        <label>Ativo</label>
+                    </div>
+                    <div className="flex gap-2 mt-4">
+                        <button onClick={() => setModalAberto(false)} className="flex-1 border p-2 rounded">Cancelar</button>
+                        <button onClick={salvarMorador} className="flex-1 bg-[#057321] text-white p-2 rounded font-bold">{loading ? "..." : "Salvar"}</button>
+                    </div>
+                </div>
+            </div>
         </div>
       )}
     </div>
