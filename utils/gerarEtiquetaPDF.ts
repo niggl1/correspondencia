@@ -158,7 +158,7 @@ export async function gerarEtiquetaPDF(dados: DadosEtiqueta): Promise<Blob> {
   // Aumentei a altura para garantir que cabe tudo
   let contentY = drawSection("DESTINATÁRIO", 36);
   
-  doc.setTextColor(0, 0, 0);
+  doc.setTextColor(0, 0, 0); // <--- Aqui você definiu Preto corretamente
   doc.setFontSize(10);
   const gap = 7;
 
@@ -180,28 +180,35 @@ export async function gerarEtiquetaPDF(dados: DadosEtiqueta): Promise<Blob> {
   // ==========================================
   contentY = drawSection("LOCAL DE RETIRADA", 16);
   
-  doc.setTextColor(0, 0, 0);
+  doc.setTextColor(0, 0, 0); // <--- Aqui também
   doc.setFontSize(12); 
   doc.setFont("helvetica", "bold");
   
   const local = dados.localRetirada || "Portaria";
-  doc.text(local.toUpperCase(), margin + 5, contentY + 4); // +4 para centralizar melhor verticalmente
+  doc.text(local.toUpperCase(), margin + 5, contentY + 4); 
 
   y += 35;
 
   // ==========================================
   // 5. OBSERVAÇÕES
   // ==========================================
-  contentY = drawSection("OBSERVAÇÕES", 24);
+  const obsTexto = dados.observacao || "Sem observações";
+  
+  // Calcula altura dinâmica caso o texto seja grande
   doc.setFontSize(10);
   doc.setFont("helvetica", "normal");
-  
-  const obsTexto = dados.observacao || "Sem observações";
-  // Proteção no splitText
   const obsLines = doc.splitTextToSize(String(obsTexto), contentWidth - 10);
+  // Altura mínima de 24, ou expande se tiver muitas linhas (5px por linha aprox)
+  const obsHeight = Math.max(24, (obsLines.length * 5) + 10);
+
+  contentY = drawSection("OBSERVAÇÕES", obsHeight);
+  
+  // FIX: Resetar a cor para preto, pois drawSection deixou branco
+  doc.setTextColor(0, 0, 0); 
+  
   doc.text(obsLines, margin + 5, contentY);
 
-  y += 45; 
+  y += (obsHeight + 15); // Ajusta o Y baseado na altura dinâmica
 
   // ==========================================
   // 6. FOTO E QR CODE
@@ -255,4 +262,3 @@ export async function gerarEtiquetaPDF(dados: DadosEtiqueta): Promise<Blob> {
 
   return doc.output("blob");
 }
-
