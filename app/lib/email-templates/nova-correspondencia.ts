@@ -1,6 +1,15 @@
-import { emailBaseTemplate, buttonGreen, infoBoxGreen, warningBox } from './base-template';
+import {
+  emailBaseTemplate,
+  buttonGreen,
+  infoBoxGreen,
+  warningBox,
+} from './base-template';
 
-interface NovaCorrespondenciaData {
+/**
+ * Dados esperados para o email de nova correspondência
+ * ⚠️ ESTE TIPO PRECISA SER EXPORTADO
+ */
+export interface NovaCorrespondenciaData {
   nomeMorador: string;
   tipoCorrespondencia: string;
   dataChegada: string;
@@ -12,10 +21,19 @@ interface NovaCorrespondenciaData {
   dashboardUrl: string;
 }
 
-export const emailNovaCorrespondencia = (data: NovaCorrespondenciaData) => {
-  // Emoji baseado no tipo
-  const emoji = data.tipoCorrespondencia.toLowerCase().includes('encomenda') ? '📦' : '✉️';
-  
+/**
+ * Template de email - Nova Correspondência
+ */
+export const emailNovaCorrespondencia = (
+  data: NovaCorrespondenciaData
+): string => {
+  // Emoji baseado no tipo da correspondência
+  const emoji = data.tipoCorrespondencia
+    .toLowerCase()
+    .includes('encomenda')
+    ? '📦'
+    : '✉️';
+
   const content = `
     <h2 style="margin: 0 0 20px 0; color: #111827; font-size: 24px;">
       Olá, ${data.nomeMorador}! ${emoji}
@@ -30,7 +48,7 @@ export const emailNovaCorrespondencia = (data: NovaCorrespondenciaData) => {
       ${emoji} <strong>Tipo:</strong> ${data.tipoCorrespondencia}<br>
       📅 <strong>Data de chegada:</strong> ${data.dataChegada}<br>
       🕐 <strong>Horário:</strong> ${data.horaChegada}<br>
-      📍 <strong>Local:</strong> ${data.condominioNome}<br>
+      📍 <strong>Condomínio:</strong> ${data.condominioNome}<br>
       🏢 <strong>Bloco:</strong> ${data.blocoNome}<br>
       🚪 <strong>Unidade:</strong> ${data.numeroUnidade}
     `)}

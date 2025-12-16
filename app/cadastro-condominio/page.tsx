@@ -16,7 +16,7 @@ export default function CadastroCondominioPage() {
   const [nomeCondominio, setNomeCondominio] = useState("");
   const [cnpj, setCnpj] = useState("");
   const [endereco, setEndereco] = useState("");
-  const [logoUrl, setLogoUrl] = useState("");
+  const [logoUrl, setLogoUrl] = useState(""); // Mantido, mas ficará vazio por enquanto
 
   // Dados do responsável
   const [nomeResponsavel, setNomeResponsavel] = useState("");
@@ -26,6 +26,17 @@ export default function CadastroCondominioPage() {
   const [whatsapp, setWhatsapp] = useState("");
   const [mostrarSenha, setMostrarSenha] = useState(false);
   const [mostrarConfirmarSenha, setMostrarConfirmarSenha] = useState(false);
+
+  // 🔥 MÁSCARA DE TELEFONE (Mesma do Morador)
+  const formatarTelefone = (valor: string) => {
+    let v = valor.replace(/\D/g, "");
+    v = v.substring(0, 11);
+    if (v.length > 10) return v.replace(/^(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
+    if (v.length > 6) return v.replace(/^(\d{2})(\d{4})(\d{0,4})/, "($1) $2-$3");
+    if (v.length > 2) return v.replace(/^(\d{2})(\d{0,5})/, "($1) $2");
+    if (v.length > 0) return v.replace(/^(\d{0,2})/, "($1");
+    return v;
+  };
 
   // Validações
   const validarEtapa1 = () => {
@@ -62,7 +73,7 @@ export default function CadastroCondominioPage() {
         nome: nomeCondominio,
         cnpj,
         endereco,
-        logoUrl: logoUrl || "",
+        logoUrl: logoUrl || "", // Vai vazio se o campo estiver oculto
         status: "ativo",
         criadoPor: uid,
         criadoEm: serverTimestamp(),
@@ -74,7 +85,7 @@ export default function CadastroCondominioPage() {
         uid,
         nome: nomeResponsavel,
         email,
-        whatsapp,
+        whatsapp, // Já vai formatado
         role: "responsavel",
         status: "ativo",
         condominioId: condominioRef.id,
@@ -89,7 +100,7 @@ export default function CadastroCondominioPage() {
             whatsappDestino: whatsapp
           });
       } catch (error) {
-          console.warn("⚠️ Aviso: Ambiente de teste não gerado (função auxiliar pode estar faltando ou erro de rede). O cadastro principal continua válido.", error);
+          console.warn("⚠️ Aviso: Ambiente de teste não gerado.", error);
       }
 
       // Faz logout para que o usuário faça login oficialmente na tela de login
@@ -113,7 +124,6 @@ export default function CadastroCondominioPage() {
   };
 
   return (
-    // AJUSTE MOBILE: Container scrollável, altura dinâmica e padding para Notch
     <div 
         className="bg-gradient-to-br from-green-50 to-emerald-100 flex justify-center p-4 w-full overflow-y-auto"
         style={{ 
@@ -199,6 +209,7 @@ export default function CadastroCondominioPage() {
               onChange={setEndereco}
             />
 
+            {/* 👇 OCULTADO TEMPORARIAMENTE (Bonus futuro)
             <Input
               type="url"
               label="URL do Logo (Opcional)"
@@ -214,6 +225,7 @@ export default function CadastroCondominioPage() {
                 onError={(e) => ((e.target as HTMLImageElement).style.display = "none")}
               />
             )}
+            */}
 
             <div className="flex gap-3 mt-6">
               <button
@@ -270,12 +282,13 @@ export default function CadastroCondominioPage() {
               setMostrar={setMostrarConfirmarSenha}
             />
 
+            {/* 🔥 TELEFONE COM MÁSCARA APLICADA */}
             <Input
               type="tel"
               label="WhatsApp do Responsável"
               required
               value={whatsapp}
-              onChange={setWhatsapp}
+              onChange={(val: string) => setWhatsapp(formatarTelefone(val))}
               placeholder="(00) 00000-0000"
             />
 
@@ -324,12 +337,12 @@ function Input({ label, required, value, onChange, type = "text", placeholder = 
       <label className="block text-sm font-medium text-gray-700 mb-1">
         {label} {required && <span className="text-red-500">*</span>}
       </label>
-      {/* AJUSTE: text-base evita zoom no iPhone */}
       <input
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
+        maxLength={type === "tel" ? 15 : undefined} // Limite para telefone
         className="w-full border border-gray-300 rounded-lg px-4 py-3 text-base focus:ring-[#057321] focus:border-[#057321]"
       />
     </div>
@@ -342,7 +355,6 @@ function TextArea({ label, required, value, onChange }: any) {
       <label className="block text-sm font-medium text-gray-700 mb-1">
         {label} {required && <span className="text-red-500">*</span>}
       </label>
-      {/* AJUSTE: text-base evita zoom no iPhone */}
       <textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -368,7 +380,6 @@ function PasswordInput({
       </label>
 
       <div className="relative">
-        {/* AJUSTE: text-base evita zoom no iPhone */}
         <input
           type={mostrar ? "text" : "password"}
           value={value}

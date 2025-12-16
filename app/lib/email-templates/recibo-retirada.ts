@@ -1,6 +1,6 @@
-import { emailBaseTemplate, infoBoxGreen } from './base-template';
+import { emailBaseTemplate, infoBoxGreen, buttonGreen } from './base-template';
 
-interface ReciboRetiradaData {
+export interface ReciboRetiradaData {
   nomeMorador: string;
   tipoCorrespondencia: string;
   dataRetirada: string;
@@ -8,9 +8,12 @@ interface ReciboRetiradaData {
   quemRetirou: string;
   responsavelEntrega: string;
   condominioNome: string;
+  assinaturaUrl?: string; // A URL da imagem ou do painel
 }
 
-export const emailReciboRetirada = (data: ReciboRetiradaData) => {
+export const emailReciboRetirada = (
+  data: ReciboRetiradaData
+): string => {
   const content = `
     <h2 style="margin: 0 0 20px 0; color: #111827; font-size: 24px;">
       Comprovante de Retirada 📋
@@ -21,7 +24,8 @@ export const emailReciboRetirada = (data: ReciboRetiradaData) => {
     </p>
 
     <p style="margin: 0 0 24px 0; color: #374151; font-size: 16px; line-height: 1.6;">
-      Este e-mail confirma que uma correspondência foi retirada na portaria do <strong>${data.condominioNome}</strong>.
+      Este e-mail confirma que uma correspondência foi retirada na portaria do
+      <strong>${data.condominioNome}</strong>.
     </p>
 
     ${infoBoxGreen(`
@@ -32,6 +36,13 @@ export const emailReciboRetirada = (data: ReciboRetiradaData) => {
       👤 <strong>Retirado por:</strong> ${data.quemRetirou}<br>
       👮 <strong>Entregue por:</strong> ${data.responsavelEntrega}
     `)}
+
+    ${/* Aqui entra o botão se houver URL */''}
+    ${data.assinaturaUrl ? `
+      <div style="text-align: center;">
+        ${buttonGreen('Ver Comprovante / Assinatura', data.assinaturaUrl)}
+      </div>
+    ` : ''}
 
     <p style="margin: 30px 0 0 0; color: #6b7280; font-size: 13px; line-height: 1.6;">
       Este registro serve como comprovante digital de entrega finalizada.

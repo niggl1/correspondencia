@@ -107,7 +107,6 @@ const validarEmail = (email: string) => {
 // ============================================================================
 // 3. Componente Principal
 // ============================================================================
-
 export default function GerenciarMoradores({ condominioId: adminCondominioId }: Props) {
   const { user } = useAuth();
   const [fetchedCondominioId, setFetchedCondominioId] = useState<string>("");
@@ -148,6 +147,17 @@ export default function GerenciarMoradores({ condominioId: adminCondominioId }: 
 
   const targetCondominioId = adminCondominioId || user?.condominioId || fetchedCondominioId;
   const backRoute = user?.role === "porteiro" ? "/dashboard-porteiro" : "/dashboard-responsavel";
+
+  // 🔥 COLEI A FUNÇÃO AQUI PARA VOCÊ
+  const formatarTelefone = (valor: string) => {
+    let v = valor.replace(/\D/g, "");
+    v = v.substring(0, 11);
+    if (v.length > 10) return v.replace(/^(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
+    if (v.length > 6) return v.replace(/^(\d{2})(\d{4})(\d{0,4})/, "($1) $2-$3");
+    if (v.length > 2) return v.replace(/^(\d{2})(\d{0,5})/, "($1) $2");
+    if (v.length > 0) return v.replace(/^(\d{0,2})/, "($1");
+    return v;
+  };
 
   useEffect(() => {
     async function garantirCondominioId() {
@@ -885,7 +895,7 @@ export default function GerenciarMoradores({ condominioId: adminCondominioId }: 
                 <div className="space-y-3">
                     <input className="w-full border p-2 rounded" placeholder="Nome" value={form.nome} onChange={e => atualizarForm("nome", e.target.value)} />
                     <input className="w-full border p-2 rounded" placeholder="Email" type="email" value={form.email} onChange={e => atualizarForm("email", e.target.value)} />
-                    <input className="w-full border p-2 rounded" placeholder="WhatsApp" value={form.whatsapp} onChange={e => atualizarForm("whatsapp", e.target.value)} />
+                    <input className="w-full border p-2 rounded" placeholder="WhatsApp" value={form.whatsapp} maxLength={15} onChange={e => atualizarForm("whatsapp", formatarTelefone(e.target.value))} />
                     {!modoEdicao && <input className="w-full border p-2 rounded" placeholder="Senha (min 6)" type="password" value={form.senha} onChange={e => atualizarForm("senha", e.target.value)} />}
                     <select className="w-full border p-2 rounded" value={form.perfil} onChange={e => atualizarForm("perfil", e.target.value)}>
                         {PERFIS_MORADOR.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}

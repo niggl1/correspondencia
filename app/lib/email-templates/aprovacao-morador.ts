@@ -1,13 +1,26 @@
-import { emailBaseTemplate, buttonGreen, infoBoxGreen } from './base-template';
+import {
+  emailBaseTemplate,
+  buttonGreen,
+  infoBoxGreen,
+} from './base-template';
 
-interface AprovacaoMoradorData {
+/**
+ * Dados esperados para o email de aprovação do morador
+ * ⚠️ ESTE TIPO PRECISA SER EXPORTADO
+ */
+export interface AprovacaoMoradorData {
   nomeMorador: string;
   condominioNome: string;
   email: string;
   loginUrl: string;
 }
 
-export const emailAprovacaoMorador = (data: AprovacaoMoradorData) => {
+/**
+ * Template de email - Aprovação de Morador
+ */
+export const emailAprovacaoMorador = (
+  data: AprovacaoMoradorData
+): string => {
   const content = `
     <h2 style="margin: 0 0 20px 0; color: #111827; font-size: 24px;">
       Parabéns, ${data.nomeMorador}! 🎉

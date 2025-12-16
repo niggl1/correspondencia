@@ -5,7 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { doc, getDoc, setDoc, updateDoc, Timestamp } from "firebase/firestore";
 import { db, storage } from "@/app/lib/firebase";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { X, Save, AlertCircle } from "lucide-react";
+import { X, Save, AlertCircle, ArrowRight, ArrowLeft } from "lucide-react";
 import AssinaturaDigitalPro from "./AssinaturaDigitalPro";
 import UploadImagem from "./UploadImagem";
 import { gerarReciboPDF } from "@/utils/gerarReciboPDF";
@@ -120,17 +120,17 @@ export default function ModalRetiradaProfissional({
 }: Props) {
   const { user } = useAuth();
   
+  // ESTADO PARA CONTROLAR A ETAPA ATUAL
+  const [etapaAtual, setEtapaAtual] = useState<'observacoes' | 'assinaturas'>('observacoes');
+  
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState("Processando...");
   const [error, setError] = useState("");
-
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [finalPdfUrl, setFinalPdfUrl] = useState("");
   const [linkSistemaFinal, setLinkSistemaFinal] = useState("");
-
   const [mensagemFormatada, setMensagemFormatada] = useState("");
-
   const [moradorPhone, setMoradorPhone] = useState(
     correspondencia.telefoneMorador || correspondencia.moradorTelefone || ""
   );
@@ -223,7 +223,10 @@ export default function ModalRetiradaProfissional({
     return Math.random().toString(36).substring(2, 10).toUpperCase();
   }
 
-  const handleUpload = (file: File | null) => setImagemFile(file);
+  // FUNÇÃO handleUpload ADICIONADA
+  const handleUpload = (file: File | null) => {
+    setImagemFile(file);
+  };
 
   function removerUndefined(obj: any): any {
     const resultado: any = {};
@@ -233,11 +236,25 @@ export default function ModalRetiradaProfissional({
     return resultado;
   }
 
-  async function handleConfirmar() {
+  // FUNÇÃO PARA AVANÇAR PARA AS ASSINATURAS
+  const avancarParaAssinaturas = () => {
     if (!nomeQuemRetirou.trim()) {
       setError("Nome de quem retirou é obrigatório");
       return;
     }
+    
+    // Validações adicionais podem ser adicionadas aqui
+    setEtapaAtual('assinaturas');
+    setError("");
+  };
+
+  // FUNÇÃO PARA VOLTAR PARA OBSERVAÇÕES
+  const voltarParaObservacoes = () => {
+    setEtapaAtual('observacoes');
+  };
+
+  // MODIFICAR A FUNÇÃO handleConfirmar para ser chamada apenas na etapa de assinaturas
+  async function handleConfirmarRetirada() {
     if (config.assinaturaMoradorObrigatoria && !assinaturaMorador) {
       setError("Assinatura do morador é obrigatória");
       return;
@@ -392,6 +409,14 @@ Obrigado!
     }
   }
 
+  // ADICIONAR MANIPULADOR DE TECLA PARA O TEXTAREA
+  const handleKeyDownObservacoes = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      avancarParaAssinaturas();
+    }
+  };
+
   const handleCloseSuccess = async () => {
     if (backgroundTaskRef.current) await backgroundTaskRef.current;
     onSuccess();
@@ -405,8 +430,7 @@ Obrigado!
         moradorNome={correspondencia.moradorNome}
         telefoneMorador={moradorPhone}
         emailMorador={moradorEmail}
-        // ✅ Link corrigido sendo passado
-        pdfUrl={linkSistemaFinal} 
+        pdfUrl={linkSistemaFinal}
         mensagemFormatada={mensagemFormatada}
         onClose={handleCloseSuccess}
       />
@@ -428,11 +452,24 @@ Obrigado!
       <div className={containerClass}>
         {!embedded && (
           <div className="bg-[#057321] text-white p-6 rounded-t-lg flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-bold">Registrar Retirada</h2>
-              <p className="text-green-100 text-sm mt-1">
-                Protocolo: {correspondencia.protocolo}
-              </p>
+            <div className="flex items-center gap-3">
+              {/* Indicador de etapa */}
+              <div className="flex items-center gap-2">
+                <span className={`text-sm ${etapaAtual === 'observacoes' ? 'font-bold text-white' : 'text-green-100'}`}>
+                  1. Observações
+                </span>
+                <ArrowRight size={16} className="text-green-200" />
+                <span className={`text-sm ${etapaAtual === 'assinaturas' ? 'font-bold text-white' : 'text-green-100'}`}>
+                  2. Assinaturas
+                </span>
+              </div>
+              
+              <div>
+                <h2 className="text-2xl font-bold">Registrar Retirada</h2>
+                <p className="text-green-100 text-sm mt-1">
+                  Protocolo: {correspondencia.protocolo}
+                </p>
+              </div>
             </div>
             <button
               onClick={onClose}
@@ -453,137 +490,214 @@ Obrigado!
             </div>
           )}
 
-          <div className="bg-gray-50 rounded-lg p-4">
-            <h3 className="font-semibold text-gray-900 mb-3">Dados da Correspondência</h3>
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div>
-                <span className="text-gray-600">Morador:</span>
-                <span className="ml-2 font-medium">{correspondencia.moradorNome}</span>
+          {/* ETAPA 1: OBSERVAÇÕES E DADOS BÁSICOS */}
+          {etapaAtual === 'observacoes' ? (
+            <>
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h3 className="font-semibold text-gray-900 mb-3">Dados da Correspondência</h3>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <span className="text-gray-600">Morador:</span>
+                    <span className="ml-2 font-medium">{correspondencia.moradorNome}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Bloco/Apto:</span>
+                    <span className="ml-2 font-medium">
+                      {correspondencia.blocoNome} - {correspondencia.apartamento}
+                    </span>
+                  </div>
+                </div>
               </div>
-              <div>
-                <span className="text-gray-600">Bloco/Apto:</span>
-                <span className="ml-2 font-medium">
-                  {correspondencia.blocoNome} - {correspondencia.apartamento}
-                </span>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Nome de quem retirou *
+                  </label>
+                  <input
+                    type="text"
+                    value={nomeQuemRetirou}
+                    onChange={(e) => setNomeQuemRetirou(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-[#057321] focus:border-[#057321]"
+                    placeholder="Nome completo"
+                    disabled={loading}
+                    autoFocus
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">CPF</label>
+                    <input
+                      type="text"
+                      value={cpfQuemRetirou}
+                      onChange={(e) => setCpfQuemRetirou(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-[#057321] focus:border-[#057321]"
+                      placeholder="000.000.000-00"
+                      disabled={loading}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Telefone</label>
+                    <input
+                      type="text"
+                      value={telefoneQuemRetirou}
+                      onChange={(e) => setTelefoneQuemRetirou(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-[#057321] focus:border-[#057321]"
+                      placeholder="(00) 00000-0000"
+                      disabled={loading}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Foto da Retirada (opcional)
+                  </label>
+                  <UploadImagem onUpload={handleUpload} />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Observações <span className="text-xs text-gray-500">(Ctrl+Enter para avançar)</span>
+                  </label>
+                  <textarea
+                    value={observacoes}
+                    onChange={(e) => setObservacoes(e.target.value)}
+                    onKeyDown={handleKeyDownObservacoes}
+                    rows={3}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-[#057321] focus:border-[#057321]"
+                    disabled={loading}
+                    placeholder="Digite observações sobre a retirada..."
+                  />
+                </div>
+
+                {/* Botão flutuante quando o textarea tem conteúdo */}
+                {observacoes.trim().length > 0 && (
+                  <div className="fixed bottom-6 right-6 z-50 animate-bounce">
+                    <button
+                      onClick={avancarParaAssinaturas}
+                      className="bg-green-600 text-white p-3 rounded-full shadow-lg hover:bg-green-700 transition-all flex items-center justify-center"
+                      title="Clique para ir às assinaturas"
+                      type="button"
+                    >
+                      <ArrowRight size={24} />
+                    </button>
+                  </div>
+                )}
               </div>
-            </div>
-          </div>
 
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Nome de quem retirou *
-              </label>
-              <input
-                type="text"
-                value={nomeQuemRetirou}
-                onChange={(e) => setNomeQuemRetirou(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-[#057321] focus:border-[#057321]"
-                placeholder="Nome completo"
-                disabled={loading}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">CPF</label>
-                <input
-                  type="text"
-                  value={cpfQuemRetirou}
-                  onChange={(e) => setCpfQuemRetirou(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-[#057321] focus:border-[#057321]"
-                  placeholder="000.000.000-00"
+              {/* Botões da etapa de observações */}
+              <div className="bg-gray-50 p-6 rounded-b-lg flex justify-between gap-3">
+                <button
+                  onClick={onClose}
+                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-all"
                   disabled={loading}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Telefone</label>
-                <input
-                  type="text"
-                  value={telefoneQuemRetirou}
-                  onChange={(e) => setTelefoneQuemRetirou(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-[#057321] focus:border-[#057321]"
-                  placeholder="(00) 00000-0000"
-                  disabled={loading}
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Foto da Retirada (opcional)
-              </label>
-              <UploadImagem onUpload={handleUpload} />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Observações</label>
-              <textarea
-                value={observacoes}
-                onChange={(e) => setObservacoes(e.target.value)}
-                rows={3}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-[#057321] focus:border-[#057321]"
-                disabled={loading}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <h3 className="font-semibold text-gray-900">Assinaturas</h3>
-
-            {config.assinaturaMoradorObrigatoria && (
-              <AssinaturaDigitalPro
-                onSave={setAssinaturaMorador}
-                label="Assinatura do Morador *"
-                obrigatorio={true}
-              />
-            )}
-
-            <div className="space-y-2">
-              <AssinaturaDigitalPro onSave={setAssinaturaPorteiro} label="Assinatura do Porteiro" />
-              <div className="flex items-center gap-2 pt-1">
-                <input
-                  type="checkbox"
-                  id="salvarPadrao"
-                  checked={salvarPadrao}
-                  onChange={(e) => setSalvarPadrao(e.target.checked)}
-                  className="w-4 h-4 text-[#057321] border-gray-300 rounded focus:ring-[#057321] cursor-pointer"
-                />
-                <label
-                  htmlFor="salvarPadrao"
-                  className="text-sm text-gray-600 cursor-pointer select-none flex items-center gap-1"
+                  type="button"
                 >
-                  Salvar esta assinatura como padrão para{" "}
-                  <strong>{user?.nome?.split(" ")[0]}</strong>
-                </label>
+                  Cancelar
+                </button>
+                <button
+                  onClick={avancarParaAssinaturas}
+                  disabled={loading || !nomeQuemRetirou.trim()}
+                  className="flex items-center gap-2 px-6 py-2 bg-[#057321] text-white rounded-lg hover:bg-[#046119] disabled:bg-gray-400 transition-all"
+                  type="button"
+                >
+                  Próximo: Assinaturas <ArrowRight size={20} />
+                </button>
               </div>
-            </div>
-          </div>
-        </div>
+            </>
+          ) : (
+            /* ETAPA 2: ASSINATURAS */
+            <>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-semibold text-gray-900 text-lg">Assinaturas Digitais</h3>
+                  <button
+                    onClick={voltarParaObservacoes}
+                    className="flex items-center gap-1 text-sm text-gray-600 hover:text-[#057321]"
+                    type="button"
+                  >
+                    <ArrowLeft size={16} /> Voltar para Observações
+                  </button>
+                </div>
 
-        <div className="bg-gray-50 p-6 rounded-b-lg flex justify-end gap-3">
-          <button
-            onClick={onClose}
-            className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-all"
-            disabled={loading}
-            type="button"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={handleConfirmar}
-            disabled={loading}
-            className="flex items-center gap-2 px-6 py-2 bg-[#057321] text-white rounded-lg hover:bg-[#046119] disabled:bg-gray-400 transition-all"
-            type="button"
-          >
-            <Save size={20} />
-            {loading ? "Processando..." : "Confirmar Retirada"}
-          </button>
+                {config.assinaturaMoradorObrigatoria && (
+                  <AssinaturaDigitalPro
+                    onSave={setAssinaturaMorador}
+                    label="Assinatura do Morador *"
+                    obrigatorio={true}
+                  />
+                )}
+
+                <div className="space-y-2">
+                  <AssinaturaDigitalPro onSave={setAssinaturaPorteiro} label="Assinatura do Porteiro" />
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="checkbox"
+                      id="salvarPadrao"
+                      checked={salvarPadrao}
+                      onChange={(e) => setSalvarPadrao(e.target.checked)}
+                      className="w-4 h-4 text-[#057321] border-gray-300 rounded focus:ring-[#057321] cursor-pointer"
+                    />
+                    <label
+                      htmlFor="salvarPadrao"
+                      className="text-sm text-gray-600 cursor-pointer select-none flex items-center gap-1"
+                    >
+                      Salvar esta assinatura como padrão para{" "}
+                      <strong>{user?.nome?.split(" ")[0]}</strong>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Resumo dos dados da etapa anterior */}
+                <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 mt-6">
+                  <h4 className="font-medium text-blue-900 mb-2">Resumo da Retirada</h4>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <span className="text-blue-600">Retirado por:</span>
+                      <span className="ml-2 font-medium">{nomeQuemRetirou}</span>
+                    </div>
+                    {cpfQuemRetirou && (
+                      <div>
+                        <span className="text-blue-600">CPF:</span>
+                        <span className="ml-2 font-medium">{cpfQuemRetirou}</span>
+                      </div>
+                    )}
+                    {observacoes && (
+                      <div className="col-span-2">
+                        <span className="text-blue-600">Observações:</span>
+                        <p className="mt-1 text-gray-700 bg-white p-2 rounded border">{observacoes}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Botões da etapa de assinaturas */}
+              <div className="bg-gray-50 p-6 rounded-b-lg flex justify-between gap-3">
+                <button
+                  onClick={voltarParaObservacoes}
+                  className="flex items-center gap-2 px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-all"
+                  disabled={loading}
+                  type="button"
+                >
+                  <ArrowLeft size={20} /> Voltar
+                </button>
+                <button
+                  onClick={handleConfirmarRetirada}
+                  disabled={loading}
+                  className="flex items-center gap-2 px-6 py-2 bg-[#057321] text-white rounded-lg hover:bg-[#046119] disabled:bg-gray-400 transition-all"
+                  type="button"
+                >
+                  <Save size={20} />
+                  {loading ? "Processando..." : "Confirmar Retirada"}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
   );
 }
-
-
-

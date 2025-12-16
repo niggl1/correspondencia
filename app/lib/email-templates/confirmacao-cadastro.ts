@@ -1,13 +1,22 @@
 import { emailBaseTemplate, infoBoxGreen, warningBox } from './base-template';
 
-interface ConfirmacaoCadastroData {
+/**
+ * Dados esperados para o email de confirmação de cadastro
+ * ⚠️ ESTE TIPO PRECISA SER EXPORTADO
+ */
+export interface ConfirmacaoCadastroData {
   nomeMorador: string;
   condominioNome: string;
   blocoNome: string;
   numeroUnidade: string;
 }
 
-export const emailConfirmacaoCadastro = (data: ConfirmacaoCadastroData) => {
+/**
+ * Template de email - Confirmação de Cadastro
+ */
+export const emailConfirmacaoCadastro = (
+  data: ConfirmacaoCadastroData
+): string => {
   const content = `
     <h2 style="margin: 0 0 20px 0; color: #111827; font-size: 24px;">
       Olá, ${data.nomeMorador}! 👋

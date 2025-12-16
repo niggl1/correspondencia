@@ -41,6 +41,34 @@ export default function CadastroMoradorPage() {
     { value: "outro", label: "Outro" },
   ];
 
+  // 🔥 NOVA FUNÇÃO DE FORMATAÇÃO DE TELEFONE
+  const formatarTelefone = (valor: string) => {
+    // Remove tudo que não é número
+    let v = valor.replace(/\D/g, "");
+    
+    // Limita a 11 dígitos
+    v = v.substring(0, 11);
+
+    // Aplica a máscara passo a passo
+    if (v.length > 10) {
+      // Formato Celular: (11) 99999-9999
+      return v.replace(/^(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
+    }
+    if (v.length > 6) {
+      // Formato Fixo/Incompleto: (11) 9999-9999
+      return v.replace(/^(\d{2})(\d{4})(\d{0,4})/, "($1) $2-$3");
+    }
+    if (v.length > 2) {
+      // Apenas DDD + começo: (11) 9...
+      return v.replace(/^(\d{2})(\d{0,5})/, "($1) $2");
+    }
+    if (v.length > 0) {
+      // Apenas DDD: (11...
+      return v.replace(/^(\d{0,2})/, "($1");
+    }
+    return v;
+  };
+
   const buscarCondominio = async () => {
     if (!cnpj.trim()) {
       setErro("Digite o CNPJ do condomínio");
@@ -147,7 +175,7 @@ export default function CadastroMoradorPage() {
       await setDoc(doc(db, "moradores", cred.user.uid), {
         nome,
         email,
-        whatsapp,
+        whatsapp, // Salva já formatado ou limpe aqui se preferir salvar só números: whatsapp.replace(/\D/g, "")
         perfil,
         perfilMorador: perfil,
         condominioId: condominioEncontrado.id,
@@ -195,10 +223,6 @@ export default function CadastroMoradorPage() {
   };
 
   return (
-    // AJUSTE CRÍTICO: 
-    // - overflow-y-auto: Permite rolar a tela se o teclado cobrir os campos.
-    // - minHeight: 100dvh: Altura correta para mobile.
-    // - padding top env(): Respeita o Notch do iPhone.
     <div 
         className="bg-green-50 flex justify-center p-4 w-full overflow-y-auto"
         style={{ 
@@ -207,7 +231,6 @@ export default function CadastroMoradorPage() {
             paddingBottom: '2rem'
         }}
     >
-      {/* 'my-auto' ajuda a centralizar quando há espaço, mas permite scroll quando falta */}
       <div className="bg-white w-full max-w-md p-8 rounded-2xl shadow-lg space-y-6 my-auto h-fit">
         
         <div className="text-center">
@@ -229,7 +252,6 @@ export default function CadastroMoradorPage() {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">CNPJ do Condomínio</label>
-              {/* AJUSTE: text-base evita zoom no iPhone */}
               <input 
                 value={cnpj} 
                 onChange={e => setCnpj(e.target.value)} 
@@ -256,7 +278,15 @@ export default function CadastroMoradorPage() {
 
             <input value={nome} onChange={e => setNome(e.target.value)} placeholder="Nome Completo" className="w-full px-4 py-3 border rounded-lg text-base" />
             <input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" className="w-full px-4 py-3 border rounded-lg text-base" />
-            <input value={whatsapp} onChange={e => setWhatsapp(e.target.value)} placeholder="WhatsApp" className="w-full px-4 py-3 border rounded-lg text-base" />
+            
+            {/* 🔥 INPUT DE WHATSAPP ATUALIZADO */}
+            <input 
+              value={whatsapp} 
+              onChange={e => setWhatsapp(formatarTelefone(e.target.value))} 
+              placeholder="(DDD) 99999-9999" 
+              maxLength={15} // Limita o tamanho máximo
+              className="w-full px-4 py-3 border rounded-lg text-base" 
+            />
             
             <select value={perfil} onChange={e => setPerfil(e.target.value)} className="w-full px-4 py-3 border rounded-lg bg-white text-base">
               {PERFIS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
