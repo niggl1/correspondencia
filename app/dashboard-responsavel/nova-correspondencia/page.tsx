@@ -12,6 +12,7 @@ import { doc, getDoc, collection, setDoc, Timestamp } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import Navbar from "@/components/Navbar";
 import withAuth from "@/components/withAuth";
+import { EmailService } from "@/services/emailService"; // <--- NOVO IMPORT
 import {
   Package,
   FileText,
@@ -37,7 +38,7 @@ const compressImage = async (file: File): Promise<File> => {
       img.src = event.target?.result as string;
       img.onload = () => {
         const canvas = document.createElement("canvas");
-        const MAX_WIDTH = 500; // Mantido 500px para performance mobile extrema
+        const MAX_WIDTH = 500;
         let width = img.width;
         let height = img.height;
 
@@ -72,7 +73,7 @@ const compressImage = async (file: File): Promise<File> => {
             }
           },
           "image/jpeg",
-          0.6 // Qualidade 60%
+          0.6
         );
       };
       img.onerror = () => resolve(file);
@@ -195,7 +196,7 @@ function NovaCorrespondenciaResponsavelPage() {
     setLinkPublico("");
 
     try {
-      // 1. Prepara dados iniciais em paralelo (nomes e compressão)
+      // 1. Prepara dados iniciais
       const nomesPromise = buscarNomes();
       let imagemProcessPromise: Promise<File | null> = Promise.resolve(null);
       
@@ -208,8 +209,11 @@ function NovaCorrespondenciaResponsavelPage() {
 
       const novoProtocolo = `${Math.floor(Date.now() / 1000).toString().slice(-6)}`;
       const docRef = doc(collection(db, "correspondencias"));
-      const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
+      
+      // ✅ CORREÇÃO 1: Link com domínio público
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== "undefined" ? window.location.origin : "");
       const novoLinkPublico = `${baseUrl}/ver/${docRef.id}`;
+      
       setLinkPublico(novoLinkPublico);
 
       // 2. Prepara Base64 para PDF
@@ -250,14 +254,11 @@ function NovaCorrespondenciaResponsavelPage() {
       setMessage("Salvando arquivos...");
       setProgress(60);
 
-      // 4. UPLOADS PARALELOS (MÁXIMA VELOCIDADE)
+      // 4. Uploads
       const uploadsPromises: Promise<any>[] = [];
-      
-      // Upload PDF
       const pdfRef = ref(storage, `correspondencias/entrada_${novoProtocolo}_${Date.now()}.pdf`);
       uploadsPromises.push(uploadBytes(pdfRef, pdfBlob));
 
-      // Upload Foto (se existir)
       let fotoRef: any = null;
       if (arquivoFinal) {
         fotoRef = ref(storage, `correspondencias/foto_${novoProtocolo}_${Date.now()}.jpg`);
@@ -266,7 +267,7 @@ function NovaCorrespondenciaResponsavelPage() {
 
       await Promise.all(uploadsPromises);
 
-      // 5. OBTER URLS PARALELAS
+      // 5. Obter URLs
       const urlsPromises: Promise<string>[] = [getDownloadURL(pdfRef)];
       if (fotoRef) urlsPromises.push(getDownloadURL(fotoRef));
 
@@ -291,13 +292,38 @@ function NovaCorrespondenciaResponsavelPage() {
         criadoPor: user?.email || "responsavel",
         criadoPorNome: nomeUser,
         criadoPorCargo: "Responsável",
-        imagemUrl: publicFotoUrl || "", // Garante string vazia se undefined
+        imagemUrl: publicFotoUrl || "",
         pdfUrl: publicPdfUrl,
         moradorTelefone: telefoneMorador,
         moradorEmail: emailMorador,
       });
 
       console.log("✅ Correspondência salva! ID:", docRef.id);
+
+      // ✅ CORREÇÃO 2: Envio de E-mail
+      if (emailMorador) {
+        try {
+          const now = new Date();
+          const dataHoje = now.toLocaleDateString('pt-BR');
+          const horaAgora = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+          await EmailService.enviarNovaCorrespondencia(emailMorador, {
+             nomeMorador: nomes.moradorNome,
+             tipoCorrespondencia: observacao || "Encomenda",
+             dataChegada: dataHoje,
+             horaChegada: horaAgora,
+             condominioNome: nomes.condominioNome || "Condomínio",
+             blocoNome: nomes.blocoNome,
+             numeroUnidade: nomes.apartamento,
+             localRetirada: localArmazenamento,
+             dashboardUrl: novoLinkPublico
+          });
+          console.log("📧 E-mail de aviso enviado com sucesso.");
+        } catch (emailErr) {
+          console.error("⚠️ Erro ao enviar e-mail (mas o registro foi salvo):", emailErr);
+        }
+      }
+
       setProgress(100);
 
       const variaveis = {
@@ -333,7 +359,6 @@ function NovaCorrespondenciaResponsavelPage() {
     setShowSuccessModal(false);
   };
 
-  // ✅ CORREÇÃO PARA CAPACITOR: Abre PDF no app nativo se disponível
   const handleImprimir = () => {
     if (pdfUrl) {
         const target = typeof window !== 'undefined' && (window as any).Capacitor ? "_system" : "_blank";

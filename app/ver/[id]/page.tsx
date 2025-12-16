@@ -1,13 +1,14 @@
-// Importamos a lógica visual do arquivo que acabamos de criar
+// app/ver/[id]/page.tsx
+
+// 👇 AJUSTE AQUI: Mudamos de "./" para "../" pois o arquivo está na pasta anterior
 import DetalhesView from "../detalhes-view";
 
-// Isso engana o build estático
+// Função necessária para evitar erros de build no Capacitor (Static Export)
 export async function generateStaticParams() {
-  return [{ id: 'demo' }];
+  return []; // Permite qualquer ID dinâmico
 }
 
-// Componente Servidor (não tem 'use client')
 export default function Page({ params }: { params: { id: string } }) {
-  // Passa o ID para o componente visual
+  // Pega o ID da URL (ex: /ver/123) e passa para o componente visual
   return <DetalhesView id={params.id} />;
 }

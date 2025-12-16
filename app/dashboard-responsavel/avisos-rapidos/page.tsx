@@ -129,7 +129,8 @@ function AvisosRapidosPage() {
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState("Processando...");
 
-  const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
+  // ✅ CORREÇÃO AQUI: Usa a variável de ambiente pública
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== "undefined" ? window.location.origin : "");
   const LINK_SISTEMA_FALLBACK = `${baseUrl}/login`;
 
   // ✅ PADRÃO NOVO
